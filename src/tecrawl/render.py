@@ -60,13 +60,18 @@ def discogs_search_url(artist: str, title: str) -> str:
 
 
 def render(
-    seed_blocks: list[tuple[spotify.Track, list[discover.Candidate]]],
+    seed_blocks: list[
+        tuple[spotify.Track, "discover.discogs.Release | None", list[discover.Candidate]]
+    ],
     top_picks: list[discover.TopPick] | None = None,
     playlist_name: str = "",
 ) -> Path:
     config.OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     template = _env.get_template("recommendations.html.j2")
-    grouped = [(seed, _group_by_source(cands)) for seed, cands in seed_blocks]
+    grouped = [
+        (seed, release, _group_by_source(cands))
+        for seed, release, cands in seed_blocks
+    ]
     html = template.render(
         seeds=grouped,
         top_picks=top_picks or [],

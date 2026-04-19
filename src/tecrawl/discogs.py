@@ -21,6 +21,18 @@ _LAST_REQUEST = [0.0]
 _MIN_INTERVAL = 1.05  # Discogs limit: 60 req/min authenticated
 
 
+def release_id_from_stub(r: dict) -> int | None:
+    """Discogs API returns a mix of 'release' and 'master' stubs in
+    /artists/{id}/releases and /labels/{id}/releases. For 'release' stubs,
+    `id` IS the release_id. For 'master' stubs, `id` is the master_id and
+    the real release_id is in `main_release` — using `id` builds a URL
+    that redirects to a completely unrelated release that happens to share
+    the integer (Discogs masters and releases share an ID space)."""
+    if r.get("type") == "master" and r.get("main_release"):
+        return r.get("main_release")
+    return r.get("id")
+
+
 def _coerce_year(v) -> int | None:
     """Discogs sometimes returns year as int, sometimes as a string."""
     if v is None or v == "":
@@ -112,7 +124,7 @@ def artist_releases(artist_id: int, per_page: int = 30) -> list[dict]:
 
 def style_recommendations(
     release: Release, limit: int = 15
-) -> list[tuple[str, str]]:
+) -> list[tuple[str, str, int | None]]:
     """Approximation of Discogs' on-site Recommendations: search for releases
     sharing the seed's most-specific styles, sorted by collector demand."""
     if not release.styles:
@@ -169,7 +181,7 @@ def style_recommendations(
     # already biased toward fresh releases — which is the digger's goal
     # ("what's new in this style") regardless of the seed's own era.
 
-    out: list[tuple[str, str]] = []
+    out: list[tuple[str, str, int | None]] = []
     seen_artists: set[str] = set()
     for r in results:
         if r.get("id") == release.release_id:
@@ -186,7 +198,7 @@ def style_recommendations(
         if key in seen_artists:
             continue
         seen_artists.add(key)
-        out.append((artist, title))
+        out.append((artist, title, release_id_from_stub(r)))
         if len(out) >= limit:
             break
     return out

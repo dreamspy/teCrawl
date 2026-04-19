@@ -12,6 +12,7 @@ class Candidate(NamedTuple):
     spotify_url: str | None
     spotify_type: str | None  # 'track' or 'album', None if unresolved
     youtube_id: str | None = None
+    discogs_release_id: int | None = None  # set for Discogs-sourced candidates
 
 
 class SeedRef(NamedTuple):
@@ -29,6 +30,7 @@ class TopPick(NamedTuple):
     spotify_url: str | None
     spotify_type: str | None
     youtube_id: str | None = None
+    discogs_release_id: int | None = None
 
 
 SOURCE_LABELS = {
@@ -71,7 +73,9 @@ def _primary_artist(seed_artist: str) -> str:
     return seed_artist.strip()
 
 
-def discover_for_seed(seed: spotify.Track) -> list[Candidate]:
+def discover_for_seed(
+    seed: spotify.Track,
+) -> tuple[discogs.Release | None, list[Candidate]]:
     candidates: list[Candidate] = []
     primary = _primary_artist(seed.artist)
 
@@ -95,7 +99,10 @@ def discover_for_seed(seed: spotify.Track) -> list[Candidate]:
                     src = "discogs_label_mate"
                     detail = f"label: {release.label}"
                 candidates.append(
-                    Candidate(a, t, src, detail, None, None, None)
+                    Candidate(
+                        a, t, src, detail, None, None, None,
+                        discogs_release_id=discogs.release_id_from_stub(r),
+                    )
                 )
         except Exception as e:
             print(f"    ! discogs label_releases failed: {e}")
@@ -109,7 +116,9 @@ def discover_for_seed(seed: spotify.Track) -> list[Candidate]:
                     continue
                 candidates.append(
                     Candidate(
-                        a, t, "discogs_artist", f"by {primary}", None, None, None
+                        a, t, "discogs_artist", f"by {primary}",
+                        None, None, None,
+                        discogs_release_id=discogs.release_id_from_stub(r),
                     )
                 )
         except Exception as e:
@@ -118,7 +127,7 @@ def discover_for_seed(seed: spotify.Track) -> list[Candidate]:
     if release and release.styles:
         try:
             style_label = " / ".join(release.styles[:3])
-            for a, t in discogs.style_recommendations(release, limit=15):
+            for a, t, rid in discogs.style_recommendations(release, limit=15):
                 candidates.append(
                     Candidate(
                         a,
@@ -128,6 +137,7 @@ def discover_for_seed(seed: spotify.Track) -> list[Candidate]:
                         None,
                         None,
                         None,
+                        discogs_release_id=rid,
                     )
                 )
         except Exception as e:
@@ -176,11 +186,11 @@ def discover_for_seed(seed: spotify.Track) -> list[Candidate]:
         seen.add(key)
         unique.append(c)
 
-    return _balance_across_sources(unique, CANDIDATES_PER_SEED)
+    return release, _balance_across_sources(unique, CANDIDATES_PER_SEED)
 
 
 def aggregate_top_picks(
-    seed_blocks: list[tuple[spotify.Track, list[Candidate]]],
+    seed_blocks: list[tuple[spotify.Track, "discogs.Release | None", list[Candidate]]],
     min_hits: int = 2,
 ) -> list[TopPick]:
     """A candidate that surfaces from multiple seeds is much higher signal
@@ -188,7 +198,7 @@ def aggregate_top_picks(
     like, not just one. Group by (artist, title) across seeds, keep anything
     that appeared from 2+ seeds, sort by hit count."""
     by_key: dict[tuple[str, str], dict] = {}
-    for seed, cands in seed_blocks:
+    for seed, _release, cands in seed_blocks:
         seed_ref = SeedRef(
             display=f"{_primary_artist(seed.artist)} — {seed.title}",
             spotify_id=seed.spotify_id,
@@ -210,6 +220,7 @@ def aggregate_top_picks(
                     "spotify_url": None,
                     "spotify_type": None,
                     "youtube_id": None,
+                    "discogs_release_id": None,
                 },
             )
             if c.source not in entry["sources"]:
@@ -224,6 +235,8 @@ def aggregate_top_picks(
                 entry["spotify_type"] = c.spotify_type
             if c.youtube_id and not entry["youtube_id"]:
                 entry["youtube_id"] = c.youtube_id
+            if c.discogs_release_id and not entry["discogs_release_id"]:
+                entry["discogs_release_id"] = c.discogs_release_id
 
     picks = [
         TopPick(
@@ -236,6 +249,7 @@ def aggregate_top_picks(
             spotify_url=e["spotify_url"],
             spotify_type=e["spotify_type"],
             youtube_id=e["youtube_id"],
+            discogs_release_id=e["discogs_release_id"],
         )
         for e in by_key.values()
         if len(e["seeds"]) >= min_hits

@@ -118,11 +118,14 @@ def main(argv: list[str] | None = None) -> int:
         seed_list = seed_list[: args.max_seeds]
     print(f"Source: {source_name!r} ({len(seed_list)} seed tracks)")
 
-    seed_blocks: list[tuple[spotify.Track, list[discover.Candidate]]] = []
+    seed_blocks: list[
+        tuple[spotify.Track, "discover.discogs.Release | None", list[discover.Candidate]]
+    ] = []
     for i, seed in enumerate(seed_list, 1):
         print(f"[{i}/{len(seed_list)}] {seed.artist} — {seed.title}")
+        release = None
         try:
-            candidates = discover.discover_for_seed(seed)
+            release, candidates = discover.discover_for_seed(seed)
             candidates = discover.resolve_to_spotify(candidates)
             candidates = discover.resolve_to_youtube(candidates)
         except Exception as e:
@@ -132,7 +135,7 @@ def main(argv: list[str] | None = None) -> int:
         resolved_yt = sum(1 for c in candidates if c.youtube_id)
         print(f"    → {len(candidates)} candidates, "
               f"{resolved_sp} on Spotify, {resolved_yt} on YouTube")
-        seed_blocks.append((seed, candidates))
+        seed_blocks.append((seed, release, candidates))
 
     min_hits = 3
     top_picks = discover.aggregate_top_picks(seed_blocks, min_hits=min_hits)
