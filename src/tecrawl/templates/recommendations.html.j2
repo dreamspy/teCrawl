@@ -199,10 +199,38 @@ a.secondary { color: #888; }
   color: #000;
   font-size: .7rem;
   font-weight: 700;
-  padding: .2rem .5rem;
+  padding: .2rem .55rem;
   border-radius: 10px;
   white-space: nowrap;
+  border: 0;
+  cursor: pointer;
+  font-family: inherit;
 }
+.hits-badge:hover { background: #1ed760; }
+.hits-badge::after { content: " ▼"; font-size: .85rem; margin-left: .15rem; }
+.hits-badge.open::after { content: " ▲"; }
+.seed-list {
+  grid-column: 1 / -1;
+  margin-top: .4rem;
+  padding: .5rem .25rem;
+  border-top: 1px dashed var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: .15rem;
+}
+.seed-list[hidden] { display: none; }
+.seed-row {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: .6rem;
+  align-items: center;
+  padding: .35rem .5rem;
+  border-radius: 4px;
+  font-size: .85rem;
+  color: var(--muted);
+}
+.seed-row:hover { background: rgba(255,255,255,0.04); color: var(--text); }
+.seed-row .play { width: 22px; height: 22px; font-size: .6rem; }
 </style>
 </head>
 <body>
@@ -225,13 +253,25 @@ a.secondary { color: #888; }
       <div class="pick-title">{{ p.title }}</div>
       <div class="pick-artist">{{ p.artist }}</div>
     </div>
-    <span class="hits-badge" title="{{ p.seeds|join(' · ') }}">{{ p.hits }}× seeds</span>
+    <button class="hits-badge" onclick="toggleSeedList(this)" title="Show seeds that surfaced this">{{ p.hits }}× seeds</button>
     {% if p.spotify_url %}
       <a href="{{ p.spotify_url }}" target="_blank" rel="noopener">Spotify</a>
     {% else %}
       <a href="{{ spotify_search_url(p.artist, p.title) }}" target="_blank" rel="noopener" class="secondary">Search</a>
     {% endif %}
     <a href="{{ youtube_search_url(p.artist, p.title) }}" target="_blank" rel="noopener" class="secondary">YouTube</a>
+    <div class="seed-list" hidden>
+      {% for s in p.seeds %}
+      <div class="seed-row">
+        {% if s.spotify_id %}
+          <button class="play" data-spotify-id="{{ s.spotify_id }}" data-spotify-type="track" onclick="togglePlay(this)" title="Play seed preview">▶</button>
+        {% else %}
+          <button class="play disabled" disabled title="Not on Spotify">▶</button>
+        {% endif %}
+        <span>{{ s.display }}</span>
+      </div>
+      {% endfor %}
+    </div>
   </div>
   {% endfor %}
 </div>
@@ -305,15 +345,37 @@ function closeAllEmbeds() {
     activeController = null;
   }
   document.querySelectorAll('.embed').forEach(function (e) {
-    const host = e.closest('.cand, .seed-head, .pick');
+    const host = e.closest('.cand, .seed-head, .pick, .seed-row');
     const otherBtn = host && host.querySelector('.play');
     if (otherBtn) otherBtn.textContent = '▶';
     e.remove();
   });
 }
 
+function toggleSeedList(btn) {
+  const pick = btn.closest('.pick');
+  const list = pick.querySelector('.seed-list');
+  if (!list) return;
+  const wasOpen = !list.hidden;
+  // Close any other open lists so only one expands at a time.
+  document.querySelectorAll('.seed-list').forEach(function (l) {
+    if (l !== list) {
+      l.hidden = true;
+      const otherBadge = l.closest('.pick').querySelector('.hits-badge');
+      if (otherBadge) otherBadge.classList.remove('open');
+    }
+  });
+  if (wasOpen) {
+    // Collapsing — kill any preview playing inside this list so audio
+    // doesn't keep going while the row is hidden.
+    if (list.querySelector('.embed')) closeAllEmbeds();
+  }
+  list.hidden = wasOpen;
+  btn.classList.toggle('open', !wasOpen);
+}
+
 function togglePlay(btn) {
-  const cand = btn.closest('.cand, .seed-head, .pick');
+  const cand = btn.closest('.cand, .seed-head, .pick, .seed-row');
   const existing = cand.querySelector('.embed');
   if (existing) {
     closeAllEmbeds();

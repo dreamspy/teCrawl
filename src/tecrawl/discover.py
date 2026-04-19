@@ -13,12 +13,17 @@ class Candidate(NamedTuple):
     spotify_type: str | None  # 'track' or 'album', None if unresolved
 
 
+class SeedRef(NamedTuple):
+    display: str
+    spotify_id: str | None
+
+
 class TopPick(NamedTuple):
     artist: str
     title: str
     hits: int  # how many distinct seeds surfaced this
     sources: list[str]  # discovery angles that surfaced it (deduped)
-    seeds: list[str]  # display strings of seeds that surfaced it
+    seeds: list[SeedRef]  # seeds that surfaced this candidate
     spotify_id: str | None
     spotify_url: str | None
     spotify_type: str | None
@@ -170,7 +175,10 @@ def aggregate_top_picks(
     that appeared from 2+ seeds, sort by hit count."""
     by_key: dict[tuple[str, str], dict] = {}
     for seed, cands in seed_blocks:
-        seed_label = f"{_primary_artist(seed.artist)} — {seed.title}"
+        seed_ref = SeedRef(
+            display=f"{_primary_artist(seed.artist)} — {seed.title}",
+            spotify_id=seed.spotify_id,
+        )
         # A single seed can list the same candidate from multiple angles
         # (e.g. label-mate AND same vibe). Count that as ONE hit for this
         # seed but keep both source tags.
@@ -192,7 +200,7 @@ def aggregate_top_picks(
             if c.source not in entry["sources"]:
                 entry["sources"].append(c.source)
             if key not in seen_in_seed:
-                entry["seeds"].append(seed_label)
+                entry["seeds"].append(seed_ref)
                 seen_in_seed.add(key)
             # Keep the first resolved Spotify hit we see for this candidate.
             if c.spotify_id and not entry["spotify_id"]:
