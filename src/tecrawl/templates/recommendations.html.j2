@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>teCrawl{% if playlist_name %} — {{ playlist_name }}{% endif %}</title>
+<style>
+:root {
+  --bg: #0a0a0a;
+  --card: #161616;
+  --text: #e8e8e8;
+  --muted: #888;
+  --accent: #1db954;
+  --border: #2a2a2a;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  padding: 2rem 1rem;
+  line-height: 1.4;
+}
+.wrap { max-width: 920px; margin: 0 auto; }
+h1 { margin: 0 0 .5rem; font-size: 1.4rem; font-weight: 600; }
+.meta { color: var(--muted); font-size: .85rem; margin-bottom: 2rem; }
+.seed {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1rem 1.25rem;
+  margin-bottom: 1.25rem;
+}
+.seed-title { font-size: 1.05rem; font-weight: 600; margin: 0; }
+.seed-artist { color: var(--muted); font-size: .9rem; margin: .15rem 0 1rem; }
+.cand {
+  display: grid;
+  grid-template-columns: auto 1fr auto auto auto;
+  gap: .75rem;
+  align-items: center;
+  padding: .45rem 0;
+  border-top: 1px solid var(--border);
+  font-size: .9rem;
+}
+.play {
+  background: transparent;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 50%;
+  width: 26px;
+  height: 26px;
+  cursor: pointer;
+  font-size: .7rem;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: inherit;
+}
+.play:hover { background: var(--accent); color: #000; }
+.play.disabled { border-color: #333; color: #333; cursor: default; }
+.play.disabled:hover { background: transparent; color: #333; }
+.embed {
+  grid-column: 1 / -1;
+  margin-top: .5rem;
+}
+.embed iframe {
+  width: 100%;
+  height: 80px;
+  border: 0;
+  border-radius: 6px;
+}
+.embed iframe.album { height: 152px; }
+.cand-info { min-width: 0; }
+.cand-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cand-artist {
+  color: var(--muted);
+  font-size: .8rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tag {
+  font-size: .68rem;
+  padding: .15rem .45rem;
+  border-radius: 3px;
+  white-space: nowrap;
+  text-transform: uppercase;
+  letter-spacing: .03em;
+}
+.tag.discogs_label { background: #2a1f0a; color: #d4a651; }
+.tag.discogs_artist { background: #1a1a2a; color: #8888d4; }
+.tag.discogs_label_mate { background: #2a1f0a; color: #b88a3a; }
+.tag.lastfm_track { background: #2a0a0a; color: #d44; }
+.tag.lastfm_artist { background: #2a0a1a; color: #d46; }
+a { color: var(--accent); text-decoration: none; font-size: .85rem; }
+a:hover { text-decoration: underline; }
+a.secondary { color: #888; }
+.empty { color: var(--muted); font-size: .85rem; font-style: italic; }
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1>teCrawl{% if playlist_name %} — {{ playlist_name }}{% endif %}</h1>
+<div class="meta">Generated {{ generated_at }} · {{ seeds|length }} seed track{% if seeds|length != 1 %}s{% endif %}</div>
+
+{% for seed, candidates in seeds %}
+<div class="seed">
+  <div class="seed-title">
+    {% if seed.spotify_id %}<a href="https://open.spotify.com/track/{{ seed.spotify_id }}" target="_blank" rel="noopener">{{ seed.title }}</a>{% else %}{{ seed.title }}{% endif %}
+  </div>
+  <div class="seed-artist">{{ seed.artist }}</div>
+  {% if candidates %}
+    {% for c in candidates %}
+    <div class="cand">
+      {% if c.spotify_id %}
+        <button class="play" data-spotify-id="{{ c.spotify_id }}" data-spotify-type="{{ c.spotify_type }}" onclick="togglePlay(this)" title="Play preview / full track">▶</button>
+      {% else %}
+        <button class="play disabled" disabled title="Not on Spotify">▶</button>
+      {% endif %}
+      <div class="cand-info">
+        <div class="cand-title">{{ c.title }}</div>
+        <div class="cand-artist">{{ c.artist }}</div>
+      </div>
+      <span class="tag {{ c.source }}" title="{{ c.source_detail }}">{{ source_labels[c.source] }}</span>
+      {% if c.spotify_url %}
+        <a href="{{ c.spotify_url }}" target="_blank" rel="noopener">Spotify</a>
+      {% else %}
+        <a href="{{ spotify_search_url(c.artist, c.title) }}" target="_blank" rel="noopener" class="secondary">Search</a>
+      {% endif %}
+      <a href="{{ youtube_search_url(c.artist, c.title) }}" target="_blank" rel="noopener" class="secondary">YouTube</a>
+    </div>
+    {% endfor %}
+  {% else %}
+    <div class="empty">No candidates.</div>
+  {% endif %}
+</div>
+{% endfor %}
+</div>
+<script src="https://open.spotify.com/embed/iframe-api/v1" async></script>
+<script>
+let SpotifyAPI = null;
+let activeController = null;
+let pendingClick = null;
+
+window.onSpotifyIframeApiReady = function (api) {
+  SpotifyAPI = api;
+  if (pendingClick) {
+    const btn = pendingClick;
+    pendingClick = null;
+    togglePlay(btn);
+  }
+};
+
+function closeAllEmbeds() {
+  if (activeController) {
+    try { activeController.destroy(); } catch (e) {}
+    activeController = null;
+  }
+  document.querySelectorAll('.embed').forEach(function (e) {
+    const otherBtn = e.closest('.cand').querySelector('.play');
+    if (otherBtn) otherBtn.textContent = '▶';
+    e.remove();
+  });
+}
+
+function togglePlay(btn) {
+  const cand = btn.closest('.cand');
+  const existing = cand.querySelector('.embed');
+  if (existing) {
+    closeAllEmbeds();
+    return;
+  }
+  // If the API isn't ready yet, defer this click and run when it loads.
+  if (!SpotifyAPI) {
+    pendingClick = btn;
+    btn.textContent = '…';
+    return;
+  }
+  closeAllEmbeds();
+
+  const wrap = document.createElement('div');
+  wrap.className = 'embed';
+  const placeholder = document.createElement('div');
+  wrap.appendChild(placeholder);
+  cand.appendChild(wrap);
+  btn.textContent = '⏸';
+
+  const kind = btn.dataset.spotifyType || 'track';
+  SpotifyAPI.createController(
+    placeholder,
+    {
+      uri: 'spotify:' + kind + ':' + btn.dataset.spotifyId,
+      width: '100%',
+      height: kind === 'album' ? 152 : 80,
+    },
+    function (controller) {
+      activeController = controller;
+      controller.play();
+    }
+  );
+}
+</script>
+</body>
+</html>

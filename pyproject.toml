@@ -1,0 +1,20 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "tecrawl"
+version = "0.1.0"
+description = "Personal techno discovery tool — pulls similar tracks from Discogs and Last.fm for a Spotify playlist seed."
+requires-python = ">=3.11"
+dependencies = [
+    "requests>=2.31",
+    "python-dotenv>=1.0",
+    "jinja2>=3.1",
+]
+
+[project.scripts]
+tecrawl = "tecrawl.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/tecrawl"]
