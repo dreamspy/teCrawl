@@ -1,36 +1,7 @@
 # TODO
 
-## v1 — minimum viable digger ✅ shipped 2026-04-19
-
-- [x] Spotify auth (client credentials for /search; user OAuth not needed since input pivoted to CSV)
-- [x] ~~Read tracks from a public Spotify playlist URL~~ — **pivoted to CSV input** (Exportify)
-  - Spotify Web API blocks `/playlists/{id}/tracks` for new (Developer Mode) apps; confirmed with 403s on three of the user's own public playlists. Workaround: export via https://watsonbox.github.io/exportify/ → CSV → tecrawl
-- [x] Discogs auth (personal access token)
-- [x] Last.fm auth (API key, read-only)
-- [x] **Discogs discovery angles** per seed:
-  - Search Discogs → resolve to a release → get label(s) and artist(s)
-  - 1. Other releases on the **same label**
-  - 2. Other releases by the **same artist**
-  - 3. Releases by **other artists who appear on that label**
-- [x] **Last.fm discovery angles** per seed:
-  - 4. `track.getSimilar`
-  - 5. `artist.getSimilar` → top tracks for each similar artist
-- [x] Merge to ~20 candidates per seed; dedupe across seeds; tag each with its source angle (1–5)
-- [x] Resolve each candidate back to a Spotify track/album ID via Spotify search
-  - Discogs candidates → `/search?type=album` (release titles aren't track titles)
-  - Last.fm candidates → `/search?type=track`
-  - **Artist-name sanity check** (NFD-normalized substring match) so wildly wrong matches no longer slip through
-- [x] Generate static HTML output grouped by seed track
-  - Each candidate row: track + artist, "why" tag, Spotify link, YouTube fallback
-  - One section per seed
-  - **Inline Spotify IFrame-API player** (one-click ▶ → loads + plays; only one active at a time)
-- [x] Single CLI command: `tecrawl <csv-path>` writes to `output/<timestamp>.html`
-- [x] Respect Discogs rate limits (60 req/min) — file-based JSON cache (7d TTL), 1.05 sec throttle
-- [x] Respect Last.fm rate limits (5 req/sec) — same cache, 0.25 sec throttle
-
 ## v2 — high-leverage next steps
 
-- [ ] **Cross-seed scoring**: when a candidate appears from multiple seeds, that's much higher signal than a one-off — surface those at the top in a "Top picks" section
 - [ ] **Seen / dismissed persistence**: tiny JSON file recording (artist, title) you've evaluated; re-runs skip them so each run is fresh material
 - [ ] **Improve Spotify resolution rate** (often only 0–3 of 20): strip catalog/format suffixes from Discogs titles ("- EP", "(Original Mix)", catalog numbers), and fall back to track search when album search fails
 
@@ -83,8 +54,42 @@
 
 ## Nice-to-have
 
-- [ ] Persist a "seen" / "dismissed" file so the same recs don't keep reappearing across runs
-- [ ] Thumbs up/down buttons in the HTML that write to that file (would need a tiny local server, or a `<a>`-link hack)
-- [ ] Score/rank candidates by how many seeds they were surfaced from + which discovery angle (cross-seed frequency = high signal)
+- [ ] Thumbs up/down buttons in the HTML that write to a seen/dismissed file (would need a tiny local server, or a `<a>`-link hack)
 - [ ] Filter by BPM range or Spotify audio features (energy, danceability) — note: Spotify deprecated audio-features for new apps in late 2024, check status
 - [ ] Exclude tracks already in your library / playlist
+
+---
+
+## Archive
+
+### v2 — cross-seed scoring ✅ shipped 2026-04-19
+
+- [x] **Cross-seed scoring**: candidates surfaced from 3+ seeds bubble to a "★ Top picks" section at the top of the HTML, sorted by hit count, with a collapsible per-seed dropdown that includes a play button to audition each originating seed
+
+### v1 — minimum viable digger ✅ shipped 2026-04-19
+
+- [x] Spotify auth (client credentials for /search; user OAuth not needed since input pivoted to CSV)
+- [x] ~~Read tracks from a public Spotify playlist URL~~ — **pivoted to CSV input** (Exportify)
+  - Spotify Web API blocks `/playlists/{id}/tracks` for new (Developer Mode) apps; confirmed with 403s on three of the user's own public playlists. Workaround: export via https://watsonbox.github.io/exportify/ → CSV → tecrawl
+- [x] Discogs auth (personal access token)
+- [x] Last.fm auth (API key, read-only)
+- [x] **Discogs discovery angles** per seed:
+  - Search Discogs → resolve to a release → get label(s) and artist(s)
+  - 1. Other releases on the **same label**
+  - 2. Other releases by the **same artist**
+  - 3. Releases by **other artists who appear on that label**
+- [x] **Last.fm discovery angles** per seed:
+  - 4. `track.getSimilar`
+  - 5. `artist.getSimilar` → top tracks for each similar artist
+- [x] Merge to ~20 candidates per seed; dedupe across seeds; tag each with its source angle (1–5)
+- [x] Resolve each candidate back to a Spotify track/album ID via Spotify search
+  - Discogs candidates → `/search?type=album` (release titles aren't track titles)
+  - Last.fm candidates → `/search?type=track`
+  - **Artist-name sanity check** (NFD-normalized substring match) so wildly wrong matches no longer slip through
+- [x] Generate static HTML output grouped by seed track
+  - Each candidate row: track + artist, "why" tag, Spotify link, YouTube fallback
+  - One section per seed
+  - **Inline Spotify IFrame-API player** (one-click ▶ → loads + plays; only one active at a time)
+- [x] Single CLI command: `tecrawl <csv-path>` writes to `output/<timestamp>.html`
+- [x] Respect Discogs rate limits (60 req/min) — file-based JSON cache (7d TTL), 1.05 sec throttle
+- [x] Respect Last.fm rate limits (5 req/sec) — same cache, 0.25 sec throttle
