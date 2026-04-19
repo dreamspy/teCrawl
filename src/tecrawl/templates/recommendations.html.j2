@@ -28,20 +28,41 @@ h1 { margin: 0 0 .5rem; font-size: 1.4rem; font-weight: 600; }
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: 8px;
-  padding: 1rem 1.25rem;
-  margin-bottom: 1.25rem;
+  padding: 0 1.25rem 1.25rem;
+  margin-bottom: 2rem;
+  overflow: hidden;
 }
-.seed-title { font-size: 1.05rem; font-weight: 600; margin: 0; }
-.seed-artist { color: var(--muted); font-size: .9rem; margin: .15rem 0 1rem; }
+.seed-head {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 1rem;
+  align-items: center;
+  padding: 1.5rem 1.25rem;
+  margin: 0 -1.25rem 1.25rem;
+  background: linear-gradient(90deg, rgba(29,185,84,0.22), rgba(29,185,84,0.05));
+  border-bottom: 2px solid var(--accent);
+}
+.seed-head .play {
+  width: 44px;
+  height: 44px;
+  font-size: 1rem;
+}
+.seed-info { min-width: 0; }
+.seed-title { font-size: 1.8rem; font-weight: 700; margin: 0; line-height: 1.15; }
+.seed-title a { color: var(--text); font-size: inherit; }
+.seed-title a:hover { color: var(--accent); text-decoration: none; }
+.seed-artist { color: var(--muted); font-size: 1.05rem; margin: .3rem 0 0; }
 .cand {
   display: grid;
   grid-template-columns: auto 1fr auto auto auto;
   gap: .75rem;
   align-items: center;
-  padding: .45rem 0;
-  border-top: 1px solid var(--border);
+  padding: .7rem .75rem;
+  border-radius: 6px;
   font-size: .9rem;
 }
+.cand:nth-child(odd) { background: #1d1d1d; }
+.cand:hover { background: #242424; }
 .play {
   background: transparent;
   color: var(--accent);
@@ -95,12 +116,33 @@ h1 { margin: 0 0 .5rem; font-size: 1.4rem; font-weight: 600; }
 .tag.discogs_label { background: #2a1f0a; color: #d4a651; }
 .tag.discogs_artist { background: #1a1a2a; color: #8888d4; }
 .tag.discogs_label_mate { background: #2a1f0a; color: #b88a3a; }
+.tag.discogs_style { background: #1f0a2a; color: #b46ad4; }
 .tag.lastfm_track { background: #2a0a0a; color: #d44; }
 .tag.lastfm_artist { background: #2a0a1a; color: #d46; }
+.detail {
+  color: var(--muted);
+  font-size: .75rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
+}
 a { color: var(--accent); text-decoration: none; font-size: .85rem; }
 a:hover { text-decoration: underline; }
 a.secondary { color: #888; }
 .empty { color: var(--muted); font-size: .85rem; font-style: italic; }
+.group-head {
+  margin: 1.5rem 0 .4rem;
+  font-size: .95rem;
+  text-transform: uppercase;
+  letter-spacing: .1em;
+  color: var(--text);
+  font-weight: 700;
+  padding-bottom: .35rem;
+  border-bottom: 1px solid var(--border);
+}
+.group-head:first-of-type { margin-top: .5rem; }
+.group { display: flex; flex-direction: column; gap: .25rem; }
 </style>
 </head>
 <body>
@@ -110,12 +152,24 @@ a.secondary { color: #888; }
 
 {% for seed, candidates in seeds %}
 <div class="seed">
-  <div class="seed-title">
-    {% if seed.spotify_id %}<a href="https://open.spotify.com/track/{{ seed.spotify_id }}" target="_blank" rel="noopener">{{ seed.title }}</a>{% else %}{{ seed.title }}{% endif %}
+  <div class="seed-head">
+    {% if seed.spotify_id %}
+      <button class="play" data-spotify-id="{{ seed.spotify_id }}" data-spotify-type="track" onclick="togglePlay(this)" title="Play preview / full track">▶</button>
+    {% else %}
+      <button class="play disabled" disabled title="Not on Spotify">▶</button>
+    {% endif %}
+    <div class="seed-info">
+      <div class="seed-title">
+        {% if seed.spotify_id %}<a href="https://open.spotify.com/track/{{ seed.spotify_id }}" target="_blank" rel="noopener">{{ seed.title }}</a>{% else %}{{ seed.title }}{% endif %}
+      </div>
+      <div class="seed-artist">{{ seed.artist }}</div>
+    </div>
   </div>
-  <div class="seed-artist">{{ seed.artist }}</div>
   {% if candidates %}
-    {% for c in candidates %}
+    {% for source, group in candidates %}
+    <div class="group-head">{{ source_labels[source] }}</div>
+    <div class="group">
+    {% for c in group %}
     <div class="cand">
       {% if c.spotify_id %}
         <button class="play" data-spotify-id="{{ c.spotify_id }}" data-spotify-type="{{ c.spotify_type }}" onclick="togglePlay(this)" title="Play preview / full track">▶</button>
@@ -126,13 +180,15 @@ a.secondary { color: #888; }
         <div class="cand-title">{{ c.title }}</div>
         <div class="cand-artist">{{ c.artist }}</div>
       </div>
-      <span class="tag {{ c.source }}" title="{{ c.source_detail }}">{{ source_labels[c.source] }}</span>
+      <span class="detail" title="{{ c.source_detail }}">{{ c.source_detail }}</span>
       {% if c.spotify_url %}
         <a href="{{ c.spotify_url }}" target="_blank" rel="noopener">Spotify</a>
       {% else %}
         <a href="{{ spotify_search_url(c.artist, c.title) }}" target="_blank" rel="noopener" class="secondary">Search</a>
       {% endif %}
       <a href="{{ youtube_search_url(c.artist, c.title) }}" target="_blank" rel="noopener" class="secondary">YouTube</a>
+    </div>
+    {% endfor %}
     </div>
     {% endfor %}
   {% else %}
@@ -162,14 +218,15 @@ function closeAllEmbeds() {
     activeController = null;
   }
   document.querySelectorAll('.embed').forEach(function (e) {
-    const otherBtn = e.closest('.cand').querySelector('.play');
+    const host = e.closest('.cand, .seed-head');
+    const otherBtn = host && host.querySelector('.play');
     if (otherBtn) otherBtn.textContent = '▶';
     e.remove();
   });
 }
 
 function togglePlay(btn) {
-  const cand = btn.closest('.cand');
+  const cand = btn.closest('.cand, .seed-head');
   const existing = cand.querySelector('.embed');
   if (existing) {
     closeAllEmbeds();

@@ -17,12 +17,18 @@ SOURCE_LABELS = {
     "discogs_label": "Same label",
     "discogs_artist": "Same artist",
     "discogs_label_mate": "Label-mate",
+    "discogs_style": "Same vibe",
     "lastfm_track": "Sounds similar",
     "lastfm_artist": "Similar artist",
 }
 
 # Discogs candidates are release/album-level; Last.fm candidates are track-level
-_ALBUM_SOURCES = {"discogs_label", "discogs_artist", "discogs_label_mate"}
+_ALBUM_SOURCES = {
+    "discogs_label",
+    "discogs_artist",
+    "discogs_label_mate",
+    "discogs_style",
+}
 
 CANDIDATES_PER_SEED = 20
 
@@ -79,6 +85,24 @@ def discover_for_seed(seed: spotify.Track) -> list[Candidate]:
         except Exception as e:
             print(f"    ! discogs artist_releases failed: {e}")
 
+    if release and release.styles:
+        try:
+            style_label = " / ".join(release.styles[:3])
+            for a, t in discogs.style_recommendations(release, limit=15):
+                candidates.append(
+                    Candidate(
+                        a,
+                        t,
+                        "discogs_style",
+                        f"style: {style_label}",
+                        None,
+                        None,
+                        None,
+                    )
+                )
+        except Exception as e:
+            print(f"    ! discogs style_recommendations failed: {e}")
+
     try:
         for a, t in lastfm.similar_tracks(primary, seed.title, limit=10):
             candidates.append(
@@ -122,7 +146,23 @@ def discover_for_seed(seed: spotify.Track) -> list[Candidate]:
         seen.add(key)
         unique.append(c)
 
-    return unique[:CANDIDATES_PER_SEED]
+    return _balance_across_sources(unique, CANDIDATES_PER_SEED)
+
+
+def _balance_across_sources(candidates: list[Candidate], cap: int) -> list[Candidate]:
+    """Round-robin pick across sources so no single angle hogs all slots."""
+    by_source: dict[str, list[Candidate]] = {}
+    for c in candidates:
+        by_source.setdefault(c.source, []).append(c)
+    out: list[Candidate] = []
+    while len(out) < cap and any(by_source.values()):
+        for src in list(by_source.keys()):
+            if not by_source[src]:
+                continue
+            out.append(by_source[src].pop(0))
+            if len(out) >= cap:
+                break
+    return out
 
 
 def resolve_to_spotify(candidates: list[Candidate]) -> list[Candidate]:

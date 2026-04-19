@@ -6,6 +6,30 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from . import config, discover, spotify
 
+# Display order within each seed block — most-specific angles first.
+_SOURCE_ORDER = [
+    "discogs_artist",
+    "discogs_label",
+    "discogs_label_mate",
+    "discogs_style",
+    "lastfm_track",
+    "lastfm_artist",
+]
+
+
+def _group_by_source(
+    candidates: list[discover.Candidate],
+) -> list[tuple[str, list[discover.Candidate]]]:
+    by_source: dict[str, list[discover.Candidate]] = {}
+    for c in candidates:
+        by_source.setdefault(c.source, []).append(c)
+    ordered = [(s, by_source[s]) for s in _SOURCE_ORDER if s in by_source]
+    # Append any unknown sources at the end so nothing silently disappears.
+    for s, cs in by_source.items():
+        if s not in _SOURCE_ORDER:
+            ordered.append((s, cs))
+    return ordered
+
 _env = Environment(
     loader=FileSystemLoader(Path(__file__).parent / "templates"),
     autoescape=select_autoescape(["html"]),
@@ -28,8 +52,9 @@ def render(
 ) -> Path:
     config.OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     template = _env.get_template("recommendations.html.j2")
+    grouped = [(seed, _group_by_source(cands)) for seed, cands in seed_blocks]
     html = template.render(
-        seeds=seed_blocks,
+        seeds=grouped,
         playlist_name=playlist_name,
         generated_at=datetime.now().strftime("%Y-%m-%d %H:%M"),
         source_labels=discover.SOURCE_LABELS,

@@ -1,27 +1,38 @@
 # TODO
 
-## v1 — minimum viable digger (Discogs + Last.fm)
+## v1 — minimum viable digger ✅ shipped 2026-04-19
 
-- [ ] Spotify auth (client credentials flow — no user login needed for public playlists)
-- [ ] Read tracks from a public Spotify playlist URL → list of (artist, title) seeds
-- [ ] Discogs auth (personal access token — https://www.discogs.com/settings/developers)
-- [ ] Last.fm auth (API key only, read-only — https://www.last.fm/api/account/create)
-- [ ] **Discogs discovery angles** per seed:
+- [x] Spotify auth (client credentials for /search; user OAuth not needed since input pivoted to CSV)
+- [x] ~~Read tracks from a public Spotify playlist URL~~ — **pivoted to CSV input** (Exportify)
+  - Spotify Web API blocks `/playlists/{id}/tracks` for new (Developer Mode) apps; confirmed with 403s on three of the user's own public playlists. Workaround: export via https://watsonbox.github.io/exportify/ → CSV → tecrawl
+- [x] Discogs auth (personal access token)
+- [x] Last.fm auth (API key, read-only)
+- [x] **Discogs discovery angles** per seed:
   - Search Discogs → resolve to a release → get label(s) and artist(s)
   - 1. Other releases on the **same label**
   - 2. Other releases by the **same artist**
   - 3. Releases by **other artists who appear on that label**
-- [ ] **Last.fm discovery angles** per seed:
-  - 4. `track.getSimilar` — tracks people who scrobbled this also scrobbled
+- [x] **Last.fm discovery angles** per seed:
+  - 4. `track.getSimilar`
   - 5. `artist.getSimilar` → top tracks for each similar artist
-- [ ] Merge to ~20 candidates per seed; dedupe across seeds; tag each with its source angle (1–5)
-- [ ] Resolve each candidate (artist + title) back to a Spotify track ID via Spotify search
-- [ ] Generate static HTML output grouped by seed track
-  - Each candidate row: track + artist, label badge, "why" tag (same-label / same-artist / label-mate / similar-track / similar-artist), Spotify link, YouTube search fallback link
-  - One section per seed track ("you liked X → here's what's around it")
-- [ ] Single CLI command: `tecrawl <playlist-url>` writes to `output/<timestamp>.html`
-- [ ] Respect Discogs rate limits (60 req/min authenticated) — add throttling + on-disk cache so re-runs don't re-query
-- [ ] Respect Last.fm rate limits (5 req/sec) — same caching layer
+- [x] Merge to ~20 candidates per seed; dedupe across seeds; tag each with its source angle (1–5)
+- [x] Resolve each candidate back to a Spotify track/album ID via Spotify search
+  - Discogs candidates → `/search?type=album` (release titles aren't track titles)
+  - Last.fm candidates → `/search?type=track`
+  - **Artist-name sanity check** (NFD-normalized substring match) so wildly wrong matches no longer slip through
+- [x] Generate static HTML output grouped by seed track
+  - Each candidate row: track + artist, "why" tag, Spotify link, YouTube fallback
+  - One section per seed
+  - **Inline Spotify IFrame-API player** (one-click ▶ → loads + plays; only one active at a time)
+- [x] Single CLI command: `tecrawl <csv-path>` writes to `output/<timestamp>.html`
+- [x] Respect Discogs rate limits (60 req/min) — file-based JSON cache (7d TTL), 1.05 sec throttle
+- [x] Respect Last.fm rate limits (5 req/sec) — same cache, 0.25 sec throttle
+
+## v2 — Discogs recommendations scraping (next)
+
+- [ ] Scrape the "Recommendations" section from Discogs release pages (no public API for this)
+- [ ] Respect rate limits and ToS — cache aggressively
+- [ ] Add as a sixth discovery angle, tagged `discogs_recommendation` in the HTML output
 
 ## v2 — MP3 folder support
 
@@ -29,12 +40,6 @@
 - [ ] Parse `Artist - Title` from filenames (handle common patterns: `01 - Artist - Title.mp3`, `Artist - Title (Remix) [Label].mp3`)
 - [ ] Feed parsed (artist, title) into the same Discogs pipeline
 - [ ] Fall back to AcoustID fingerprinting if filename parsing fails (stretch)
-
-## v2 — Discogs recommendations scraping
-
-- [ ] Scrape the "Recommendations" section from Discogs release pages (no public API for this)
-- [ ] Respect rate limits and ToS — cache aggressively
-- [ ] Add as a fourth discovery angle in the HTML output
 
 ## v3 — auto-upgrade MP3s to higher bitrate via torrent
 
@@ -63,10 +68,17 @@
 
 - [ ] If Last.fm reliability becomes a problem, add ListenBrainz as an open alternative (free, no key needed for reads)
 
+## Later — Save-to-Spotify-playlist
+
+- [ ] Checkbox in the HTML next to each candidate
+- [ ] "Save selected to a new Spotify playlist" button
+- [ ] Re-introduces user OAuth + `playlist-modify-private` scope
+- [ ] Useful once we trust the rec quality enough that bulk-saving is faster than per-track curation
+
 ## Nice-to-have
 
 - [ ] Persist a "seen" / "dismissed" file so the same recs don't keep reappearing across runs
 - [ ] Thumbs up/down buttons in the HTML that write to that file (would need a tiny local server, or a `<a>`-link hack)
-- [ ] Score/rank candidates by how many seeds they were surfaced from + which discovery angle
+- [ ] Score/rank candidates by how many seeds they were surfaced from + which discovery angle (cross-seed frequency = high signal)
 - [ ] Filter by BPM range or Spotify audio features (energy, danceability) — note: Spotify deprecated audio-features for new apps in late 2024, check status
 - [ ] Exclude tracks already in your library / playlist
