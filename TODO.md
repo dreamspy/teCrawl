@@ -3,7 +3,15 @@
 ## v2 — high-leverage next steps
 
 - [ ] **Seen / dismissed persistence**: tiny JSON file recording (artist, title) you've evaluated; re-runs skip them so each run is fresh material
-- [ ] **Improve Spotify resolution rate** (often only 0–3 of 20): strip catalog/format suffixes from Discogs titles ("- EP", "(Original Mix)", catalog numbers), and fall back to track search when album search fails
+- [x] **Improve Spotify resolution rate** (often only 0–3 of 20): strip catalog/format suffixes from Discogs titles ("- EP", "(Original Mix)", catalog numbers), and fall back to track search when album search fails
+  - Cleaner code drafted in `src/tecrawl/spotify.py` (`_clean_artist`, `_clean_title`) — handles asterisk/numeric artist disambiguators, parens like `(Shackleton Mixes)`, trailing `Volum N`/`Part N`, and trailing format suffixes (` EP`, ` LP`) without a dash. **Untested** — needs verification once Spotify access is restored.
+- [ ] **Create a new Spotify app and test the resolver fix**
+  - The previous app got hit with a 21-hour Retry-After cooldown after a too-fast probe loop, then was deleted. Spotify's dashboard currently blocks creating a replacement (account-level limit). Once that clears, recreate the app, drop new client ID/secret into `.env`, run `tecrawl ~/Downloads/2026.04.19_-_source_tracks.csv` and compare resolved counts against the 25-seed baseline (current avg ~3/20).
+- [ ] **Add Spotify rate-limit safety so we never hit the wall again**
+  - Throttle: enforce a min interval per request (Spotify's published soft limit is ~180 req/min for client-credentials, but punitive backoffs kick in much sooner under burst traffic)
+  - Honor `Retry-After` header on 429: read it, sleep that long (capped at e.g. 60s), retry once; if it's > the cap, abort the run cleanly and tell the user
+  - Cache negative results (currently `None` results aren't cached — they probably should be, with a shorter TTL than positive hits, so re-runs don't keep retrying the same misses)
+  - Consider a `--dry-run-spotify` flag for development that skips Spotify resolution entirely (useful for iterating on Discogs/Last.fm logic without touching the quota)
 
 ## v2 — Discogs recommendations scraping (next)
 

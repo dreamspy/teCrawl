@@ -37,3 +37,9 @@ node_modules/
 # Editors
 .vscode/
 .idea/
+
+# Claude Code session state
+.claude/
+
+# Local debugging scripts (probes, dumps, one-off verifications)
+scratch/

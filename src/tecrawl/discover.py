@@ -1,6 +1,6 @@
 from typing import NamedTuple
 
-from . import discogs, lastfm, spotify
+from . import discogs, lastfm, spotify, youtube
 
 
 class Candidate(NamedTuple):
@@ -11,6 +11,7 @@ class Candidate(NamedTuple):
     spotify_id: str | None
     spotify_url: str | None
     spotify_type: str | None  # 'track' or 'album', None if unresolved
+    youtube_id: str | None = None
 
 
 class SeedRef(NamedTuple):
@@ -27,6 +28,7 @@ class TopPick(NamedTuple):
     spotify_id: str | None
     spotify_url: str | None
     spotify_type: str | None
+    youtube_id: str | None = None
 
 
 SOURCE_LABELS = {
@@ -36,6 +38,18 @@ SOURCE_LABELS = {
     "discogs_style": "Same vibe",
     "lastfm_track": "Sounds similar",
     "lastfm_artist": "Similar artist",
+}
+
+# Plain-language explanation of where each category comes from. Shown as a
+# small italic caption next to the section header so it's clear which
+# discovery angle produced these candidates and why.
+SOURCE_DESCRIPTIONS = {
+    "discogs_label": "Discogs · other releases on the same record label",
+    "discogs_artist": "Discogs · other releases by this artist",
+    "discogs_label_mate": "Discogs · other artists released on the same label",
+    "discogs_style": "Discogs · fresh releases sharing the seed's styles",
+    "lastfm_track": "Last.fm · scrobble-based similar tracks",
+    "lastfm_artist": "Last.fm · top tracks by similar artists",
 }
 
 # Discogs candidates are release/album-level; Last.fm candidates are track-level
@@ -195,6 +209,7 @@ def aggregate_top_picks(
                     "spotify_id": None,
                     "spotify_url": None,
                     "spotify_type": None,
+                    "youtube_id": None,
                 },
             )
             if c.source not in entry["sources"]:
@@ -207,6 +222,8 @@ def aggregate_top_picks(
                 entry["spotify_id"] = c.spotify_id
                 entry["spotify_url"] = c.spotify_url
                 entry["spotify_type"] = c.spotify_type
+            if c.youtube_id and not entry["youtube_id"]:
+                entry["youtube_id"] = c.youtube_id
 
     picks = [
         TopPick(
@@ -218,6 +235,7 @@ def aggregate_top_picks(
             spotify_id=e["spotify_id"],
             spotify_url=e["spotify_url"],
             spotify_type=e["spotify_type"],
+            youtube_id=e["youtube_id"],
         )
         for e in by_key.values()
         if len(e["seeds"]) >= min_hits
@@ -241,6 +259,24 @@ def _balance_across_sources(candidates: list[Candidate], cap: int) -> list[Candi
             out.append(by_source[src].pop(0))
             if len(out) >= cap:
                 break
+    return out
+
+
+def resolve_to_youtube(candidates: list[Candidate]) -> list[Candidate]:
+    """Look up a YouTube video ID per candidate (no API key — public search
+    page scrape, cached). YouTube has nearly everything techno releases on
+    Bandcamp/Discogs do, so this is the catch-all playable for candidates
+    that aren't on Spotify."""
+    out: list[Candidate] = []
+    for c in candidates:
+        if c.youtube_id:
+            out.append(c)
+            continue
+        try:
+            vid = youtube.search_video_id(c.artist, c.title)
+        except Exception:
+            vid = None
+        out.append(c._replace(youtube_id=vid))
     return out
 
 

@@ -55,6 +55,40 @@ def _get(url: str, params: dict | None = None) -> dict:
     return data
 
 
+def _clean_artist(artist: str) -> str:
+    """Discogs disambiguates same-name artists with suffixes like 'Feral (11)'
+    (numeric ID) and 'Prodigy*' (alias marker). Spotify search trips on both —
+    'Prodigy*' returns nothing, 'Feral (11)' returns nothing, but stripping the
+    suffix lets the canonical artist match. We keep the cleaned version as a
+    fallback only — if the original matches first, we prefer that."""
+    cleaned = re.sub(r"\s*\(\d+\)\s*$", "", artist)  # 'Feral (11)' -> 'Feral'
+    cleaned = re.sub(r"\*+\s*$", "", cleaned)         # 'Prodigy*' -> 'Prodigy'
+    return cleaned.strip()
+
+
+_VOL_RE = re.compile(
+    r"\s+(?:Vol|Vol\.|Volum|Volume|Part|Pt|Pt\.)\s+\d+\s*$",
+    re.IGNORECASE,
+)
+_FORMAT_RE = re.compile(
+    r"\s+(?:EP|LP|Single|Album|Maxi)\s*$",
+    re.IGNORECASE,
+)
+
+
+def _clean_title(title: str) -> str:
+    """Strip Discogs-isms that Spotify doesn't carry in its release titles:
+    parenthetical version notes ('(Shackleton Mixes)', '(X30)'), trailing
+    volume markers ('Volum 2', 'Vol. 3', 'Part 1'), and trailing format
+    markers ('EP', 'LP') without a dash separator (Discogs writes
+    'Woke Up Right Handed EP', Spotify lists it as 'Woke Up Right Handed')."""
+    cleaned = re.sub(r"\s*\([^)]*\)\s*", " ", title).strip()
+    cleaned = _VOL_RE.sub("", cleaned)
+    cleaned = _FORMAT_RE.sub("", cleaned)
+    cleaned = re.sub(r"\s+", " ", cleaned)
+    return cleaned.strip()
+
+
 def _normalize(s: str) -> str:
     """Lowercase, strip diacritics + non-alphanumerics for fuzzy comparison."""
     s = unicodedata.normalize("NFD", s)
@@ -70,7 +104,7 @@ def _artists_match(requested: str, returned: str) -> bool:
     return r in rt or rt in r
 
 
-def search_track(artist: str, title: str) -> Track | None:
+def _search_track_once(artist: str, title: str) -> Track | None:
     query = f'artist:"{artist}" track:"{title}"'
     data = _get(
         "https://api.spotify.com/v1/search",
@@ -94,7 +128,7 @@ def search_track(artist: str, title: str) -> Track | None:
     return None
 
 
-def search_album(artist: str, title: str) -> Album | None:
+def _search_album_once(artist: str, title: str) -> Album | None:
     query = f'artist:"{artist}" album:"{title}"'
     data = _get(
         "https://api.spotify.com/v1/search",
@@ -115,6 +149,52 @@ def search_album(artist: str, title: str) -> Album | None:
                 title=a["name"],
                 spotify_id=a["id"],
             )
+    return None
+
+
+def _query_variants(artist: str, title: str) -> list[tuple[str, str]]:
+    """Original first (cheapest, most accurate when it works); then progressively
+    cleaner artist/title combinations for Discogs noise. Deduped, original order
+    preserved so we stop at the first hit."""
+    variants = [(artist, title)]
+    a_clean = _clean_artist(artist)
+    t_clean = _clean_title(title)
+    if a_clean != artist:
+        variants.append((a_clean, title))
+    if t_clean != title:
+        variants.append((artist, t_clean))
+    if a_clean != artist and t_clean != title:
+        variants.append((a_clean, t_clean))
+    seen: set[tuple[str, str]] = set()
+    out: list[tuple[str, str]] = []
+    for v in variants:
+        if v in seen:
+            continue
+        seen.add(v)
+        out.append(v)
+    return out
+
+
+def search_track(artist: str, title: str) -> Track | None:
+    for a, t in _query_variants(artist, title):
+        hit = _search_track_once(a, t)
+        if hit:
+            return hit
+    return None
+
+
+def search_album(artist: str, title: str) -> Album | None:
+    for a, t in _query_variants(artist, title):
+        hit = _search_album_once(a, t)
+        if hit:
+            return hit
+    # Album search exhausted — Discogs sometimes returns single-track releases
+    # that exist on Spotify only as a track. Fall back to track search and
+    # wrap the result as an Album-shaped hit (the renderer treats type="album"
+    # vs type="track" via Candidate.spotify_type, set by the caller, so we
+    # return None here and let the caller decide). Keeping this comment as a
+    # marker for the next iteration if the parens/asterisk fixes don't move
+    # the needle enough.
     return None
 
 
