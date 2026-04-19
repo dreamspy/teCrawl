@@ -13,6 +13,17 @@ class Candidate(NamedTuple):
     spotify_type: str | None  # 'track' or 'album', None if unresolved
 
 
+class TopPick(NamedTuple):
+    artist: str
+    title: str
+    hits: int  # how many distinct seeds surfaced this
+    sources: list[str]  # discovery angles that surfaced it (deduped)
+    seeds: list[str]  # display strings of seeds that surfaced it
+    spotify_id: str | None
+    spotify_url: str | None
+    spotify_type: str | None
+
+
 SOURCE_LABELS = {
     "discogs_label": "Same label",
     "discogs_artist": "Same artist",
@@ -147,6 +158,66 @@ def discover_for_seed(seed: spotify.Track) -> list[Candidate]:
         unique.append(c)
 
     return _balance_across_sources(unique, CANDIDATES_PER_SEED)
+
+
+def aggregate_top_picks(
+    seed_blocks: list[tuple[spotify.Track, list[Candidate]]],
+    min_hits: int = 2,
+) -> list[TopPick]:
+    """A candidate that surfaces from multiple seeds is much higher signal
+    than a one-off — those are tracks that fit several things you already
+    like, not just one. Group by (artist, title) across seeds, keep anything
+    that appeared from 2+ seeds, sort by hit count."""
+    by_key: dict[tuple[str, str], dict] = {}
+    for seed, cands in seed_blocks:
+        seed_label = f"{_primary_artist(seed.artist)} — {seed.title}"
+        # A single seed can list the same candidate from multiple angles
+        # (e.g. label-mate AND same vibe). Count that as ONE hit for this
+        # seed but keep both source tags.
+        seen_in_seed: set[tuple[str, str]] = set()
+        for c in cands:
+            key = (c.artist.lower(), c.title.lower())
+            entry = by_key.setdefault(
+                key,
+                {
+                    "artist": c.artist,
+                    "title": c.title,
+                    "sources": [],
+                    "seeds": [],
+                    "spotify_id": None,
+                    "spotify_url": None,
+                    "spotify_type": None,
+                },
+            )
+            if c.source not in entry["sources"]:
+                entry["sources"].append(c.source)
+            if key not in seen_in_seed:
+                entry["seeds"].append(seed_label)
+                seen_in_seed.add(key)
+            # Keep the first resolved Spotify hit we see for this candidate.
+            if c.spotify_id and not entry["spotify_id"]:
+                entry["spotify_id"] = c.spotify_id
+                entry["spotify_url"] = c.spotify_url
+                entry["spotify_type"] = c.spotify_type
+
+    picks = [
+        TopPick(
+            artist=e["artist"],
+            title=e["title"],
+            hits=len(e["seeds"]),
+            sources=e["sources"],
+            seeds=e["seeds"],
+            spotify_id=e["spotify_id"],
+            spotify_url=e["spotify_url"],
+            spotify_type=e["spotify_type"],
+        )
+        for e in by_key.values()
+        if len(e["seeds"]) >= min_hits
+    ]
+    # Highest cross-seed hits first; tie-break by source breadth (a candidate
+    # found via 3 different angles is stronger than one found via 1 angle 3x).
+    picks.sort(key=lambda p: (-p.hits, -len(p.sources), p.artist.lower()))
+    return picks
 
 
 def _balance_across_sources(candidates: list[Candidate], cap: int) -> list[Candidate]:

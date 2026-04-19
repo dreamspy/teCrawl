@@ -67,8 +67,12 @@ def main(argv: list[str] | None = None) -> int:
         print(f"    → {len(candidates)} candidates, {resolved} resolved on Spotify")
         seed_blocks.append((seed, candidates))
 
-    out_path = render.render(seed_blocks, playlist_name=source_name)
-    print(f"\nWrote: {out_path}")
+    top_picks = discover.aggregate_top_picks(seed_blocks, min_hits=2)
+    print(f"\nTop picks (appear across 2+ seeds): {len(top_picks)}")
+    out_path = render.render(
+        seed_blocks, top_picks=top_picks, playlist_name=source_name
+    )
+    print(f"Wrote: {out_path}")
     return 0
 
 

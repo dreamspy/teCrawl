@@ -28,6 +28,12 @@
 - [x] Respect Discogs rate limits (60 req/min) — file-based JSON cache (7d TTL), 1.05 sec throttle
 - [x] Respect Last.fm rate limits (5 req/sec) — same cache, 0.25 sec throttle
 
+## v2 — high-leverage next steps
+
+- [ ] **Cross-seed scoring**: when a candidate appears from multiple seeds, that's much higher signal than a one-off — surface those at the top in a "Top picks" section
+- [ ] **Seen / dismissed persistence**: tiny JSON file recording (artist, title) you've evaluated; re-runs skip them so each run is fresh material
+- [ ] **Improve Spotify resolution rate** (often only 0–3 of 20): strip catalog/format suffixes from Discogs titles ("- EP", "(Original Mix)", catalog numbers), and fall back to track search when album search fails
+
 ## v2 — Discogs recommendations scraping (next)
 
 - [ ] Scrape the "Recommendations" section from Discogs release pages (no public API for this)

@@ -143,12 +143,99 @@ a.secondary { color: #888; }
 }
 .group-head:first-of-type { margin-top: .5rem; }
 .group { display: flex; flex-direction: column; gap: .25rem; }
+.top-picks {
+  background: linear-gradient(135deg, rgba(29,185,84,0.12), rgba(180,106,212,0.08));
+  border: 1px solid #2e2e2e;
+  border-radius: 10px;
+  padding: 1.25rem 1.5rem 1.5rem;
+  margin-bottom: 2.5rem;
+}
+.top-picks h2 {
+  margin: 0 0 .25rem;
+  font-size: 1.3rem;
+  font-weight: 700;
+  letter-spacing: .02em;
+}
+.top-picks .sub {
+  color: var(--muted);
+  font-size: .85rem;
+  margin-bottom: 1rem;
+}
+.pick {
+  display: grid;
+  grid-template-columns: auto 1fr auto auto auto;
+  gap: .75rem;
+  align-items: center;
+  padding: .7rem .75rem;
+  border-radius: 6px;
+  font-size: .9rem;
+}
+.pick:nth-child(odd) { background: rgba(255,255,255,0.03); }
+.pick:hover { background: rgba(255,255,255,0.06); }
+.pick-info { min-width: 0; }
+.pick-title {
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pick-artist {
+  color: var(--muted);
+  font-size: .8rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pick-meta {
+  color: var(--muted);
+  font-size: .75rem;
+  white-space: nowrap;
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.hits-badge {
+  background: var(--accent);
+  color: #000;
+  font-size: .7rem;
+  font-weight: 700;
+  padding: .2rem .5rem;
+  border-radius: 10px;
+  white-space: nowrap;
+}
 </style>
 </head>
 <body>
 <div class="wrap">
 <h1>teCrawl{% if playlist_name %} — {{ playlist_name }}{% endif %}</h1>
 <div class="meta">Generated {{ generated_at }} · {{ seeds|length }} seed track{% if seeds|length != 1 %}s{% endif %}</div>
+
+{% if top_picks %}
+<div class="top-picks">
+  <h2>★ Top picks</h2>
+  <div class="sub">Surfaced from {{ top_picks|length }} candidate{% if top_picks|length != 1 %}s{% endif %} that appeared across multiple seed tracks — strong cross-signal.</div>
+  {% for p in top_picks %}
+  <div class="pick">
+    {% if p.spotify_id %}
+      <button class="play" data-spotify-id="{{ p.spotify_id }}" data-spotify-type="{{ p.spotify_type }}" onclick="togglePlay(this)" title="Play preview / full track">▶</button>
+    {% else %}
+      <button class="play disabled" disabled title="Not on Spotify">▶</button>
+    {% endif %}
+    <div class="pick-info">
+      <div class="pick-title">{{ p.title }}</div>
+      <div class="pick-artist">{{ p.artist }}</div>
+    </div>
+    <span class="hits-badge" title="{{ p.seeds|join(' · ') }}">{{ p.hits }}× seeds</span>
+    {% if p.spotify_url %}
+      <a href="{{ p.spotify_url }}" target="_blank" rel="noopener">Spotify</a>
+    {% else %}
+      <a href="{{ spotify_search_url(p.artist, p.title) }}" target="_blank" rel="noopener" class="secondary">Search</a>
+    {% endif %}
+    <a href="{{ youtube_search_url(p.artist, p.title) }}" target="_blank" rel="noopener" class="secondary">YouTube</a>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
 
 {% for seed, candidates in seeds %}
 <div class="seed">
@@ -218,7 +305,7 @@ function closeAllEmbeds() {
     activeController = null;
   }
   document.querySelectorAll('.embed').forEach(function (e) {
-    const host = e.closest('.cand, .seed-head');
+    const host = e.closest('.cand, .seed-head, .pick');
     const otherBtn = host && host.querySelector('.play');
     if (otherBtn) otherBtn.textContent = '▶';
     e.remove();
@@ -226,7 +313,7 @@ function closeAllEmbeds() {
 }
 
 function togglePlay(btn) {
-  const cand = btn.closest('.cand, .seed-head');
+  const cand = btn.closest('.cand, .seed-head, .pick');
   const existing = cand.querySelector('.embed');
   if (existing) {
     closeAllEmbeds();
