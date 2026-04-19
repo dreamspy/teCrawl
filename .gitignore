@@ -1,0 +1,31 @@
+# Secrets — see CLAUDE.md for the full rule
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+credentials*.json
+secrets*.json
+service-account*.json
+
+# Obsidian vault config (this project lives inside an Obsidian vault)
+.obsidian/
+
+# Output
+output/
+
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Node (in case)
+node_modules/
+
+# Editors
+.vscode/
+.idea/
