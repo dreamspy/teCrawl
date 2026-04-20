@@ -2,6 +2,18 @@
 
 Automated techno discovery tool. Feed it tracks you like, get back a web page of similar tracks with one-click Spotify links.
 
+## View your latest output
+
+```bash
+./open-output.sh
+```
+
+That's it — the script activates the venv, starts the local server if it isn't already running, and opens http://localhost:8765/ in your browser. If the server is already up, it just reopens the URL (no double-start).
+
+From there, `/` lists every playlist you've run and `/<playlist-name>/` always serves the most recent output for that playlist — bookmark whichever URL you use most. Leave the server running; after each new `tecrawl` run, just refresh.
+
+**Phone access:** the server binds to all interfaces, so the URL is also reachable over [Tailscale or LAN](#viewing-from-your-phone). Always view via the server — YouTube embeds refuse `file://` origins and won't play.
+
 ## How it works
 
 1. **Seed**: a CSV of tracks (export your Spotify playlist via [Exportify](https://watsonbox.github.io/exportify/) — one-time browser auth, takes ~10 seconds per playlist).
@@ -48,6 +60,7 @@ The full workflow is **Spotify playlist → Exportify CSV → tecrawl → HTML p
 2. Go to **https://watsonbox.github.io/exportify/** in your browser.
 3. Click **Sign in with Spotify** and authorize Exportify (read-only access). One-time per browser.
 4. Find your playlist in the list and click **Export**. A CSV file downloads, e.g. `My Techno Picks.csv`.
+5. Drop it into the `input/` folder at the repo root (gitignored — personal CSVs don't get committed). The CSV filename becomes the playlist name and the output folder name, so rename it to whatever you want the run labelled as before running.
 
 > **Why CSV?** Spotify's Web API blocks new (Developer Mode) apps from reading playlist tracks directly, so we route through Exportify. Takes ~10 seconds per playlist.
 
@@ -58,10 +71,10 @@ The full workflow is **Spotify playlist → Exportify CSV → tecrawl → HTML p
 source .venv/bin/activate
 
 # full run (every track in the CSV)
-tecrawl ~/Downloads/My\ Techno\ Picks.csv
+tecrawl input/My-Techno-Picks.csv
 
 # quick smoke test on the first 3 tracks
-tecrawl ~/Downloads/My\ Techno\ Picks.csv --max-seeds 3
+tecrawl input/My-Techno-Picks.csv --max-seeds 3
 ```
 
 The tool prints progress per seed (`[12/25] Artist — Title → 20 candidates, 7 on Spotify, 18 on YouTube`) and writes the result to `output/<timestamp>.html`.
@@ -72,7 +85,24 @@ The tool prints progress per seed (`[12/25] Artist — Title → 20 candidates, 
 tecrawl serve
 ```
 
-Starts a tiny local HTTP server (default port 8765) and auto-opens the most recent HTML in your browser at `http://localhost:8765/...`. **Use this rather than opening the file directly** — YouTube embeds refuse `file://` origins and won't play. The server runs until you Ctrl-C.
+Starts a tiny local HTTP server (default port 8765) and opens it in your browser. **Use this rather than opening the file directly** — YouTube embeds refuse `file://` origins and won't play. The server runs until you Ctrl-C.
+
+Routing:
+
+- `/` — index page listing every playlist you've run, newest first.
+- `/<playlist-slug>/` — opens the most recent run for that playlist. Refresh after each new `tecrawl` call to see the updated page.
+- `/<playlist-slug>/<timestamp>.html` — a specific historical run.
+
+Output files are grouped on disk as `output/<playlist-slug>/<timestamp>.html`, so different playlists stay separate and you can keep multiple side by side.
+
+### Viewing from your phone
+
+The server binds to all interfaces, so it's reachable beyond the Mac:
+
+- **Tailscale** (recommended, works anywhere) — if `tailscale` is installed and logged in, `tecrawl serve` prints a line like `Tailscale: http://<machine>.<tailnet>.ts.net:8765/`. Open that on your phone (phone must also be on the same tailnet).
+- **Same WiFi** — browse to `http://<mac-lan-ip>:8765/` from the phone. Find the Mac's IP with `ipconfig getifaddr en0` (or System Settings → Network).
+
+Bookmark either URL on the phone. After each `tecrawl <csv>` run, pull to refresh — the index updates and the per-playlist URL always serves the latest.
 
 Each row has:
 - **▶ green** play button (Spotify inline preview, when the candidate exists on Spotify)

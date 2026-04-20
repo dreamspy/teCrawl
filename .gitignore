@@ -11,6 +11,9 @@ service-account*.json
 # Obsidian vault config (this project lives inside an Obsidian vault)
 .obsidian/
 
+# Input playlists (personal CSVs, keep out of git)
+input/
+
 # Output
 output/
 

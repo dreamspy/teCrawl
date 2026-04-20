@@ -1,3 +1,4 @@
+import re
 import urllib.parse
 from datetime import datetime
 from pathlib import Path
@@ -84,6 +85,19 @@ def render(
         lastfm_url=lastfm_url,
         discogs_search_url=discogs_search_url,
     )
-    path = config.OUTPUT_DIR / f"{datetime.now().strftime('%Y%m%d-%H%M%S')}.html"
+    # Group outputs by playlist: output/<playlist name>/<timestamp>.html.
+    # The folder name IS the display name (preserving case and spaces), minus
+    # filesystem-unsafe characters. Reruns of the same playlist land in the
+    # same folder; different playlists get different folders.
+    folder = _folder_name(playlist_name) or "Unlabeled"
+    subdir = config.OUTPUT_DIR / folder
+    subdir.mkdir(parents=True, exist_ok=True)
+    path = subdir / f"{datetime.now().strftime('%Y%m%d-%H%M%S')}.html"
     path.write_text(html, encoding="utf-8")
     return path
+
+
+def _folder_name(s: str) -> str:
+    s = re.sub(r'[\\/:*?"<>|\x00-\x1f]', "-", s)
+    s = re.sub(r"\s+", " ", s).strip(" .")
+    return s[:100]
