@@ -75,17 +75,34 @@ def _primary_artist(seed_artist: str) -> str:
 
 def discover_for_seed(
     seed: spotify.Track,
+    progress=None,
 ) -> tuple[discogs.Release | None, list[Candidate]]:
+    """`progress` (optional) receives human-readable stage messages — used by
+    the quick-search page to stream live status. Warnings still print to the
+    console when no progress callback is given (the CLI path)."""
+    say = progress or (lambda m: None)
+
+    def warn(msg: str) -> None:
+        if progress:
+            progress(f"⚠ {msg}")
+        else:
+            print(f"    ! {msg}")
+
     candidates: list[Candidate] = []
     primary = _primary_artist(seed.artist)
 
     release = None
+    say("Discogs: looking up the release…")
     try:
         release = discogs.search_release(primary, seed.title)
     except Exception as e:
-        print(f"    ! discogs search failed: {e}")
+        warn(f"discogs search failed: {e}")
+    if release:
+        found_bits = [b for b in [release.label, str(release.year or "")] if b]
+        say(f"Discogs: found “{release.title}” ({' · '.join(found_bits) or 'no label info'})")
 
     if release and release.label_id:
+        say(f"Discogs: other releases on {release.label}…")
         try:
             for r in discogs.label_releases(release.label_id, per_page=30):
                 a = (r.get("artist") or "").strip()
@@ -105,9 +122,10 @@ def discover_for_seed(
                     )
                 )
         except Exception as e:
-            print(f"    ! discogs label_releases failed: {e}")
+            warn(f"discogs label_releases failed: {e}")
 
     if release and release.artist_id:
+        say(f"Discogs: other releases by {release.artist}…")
         try:
             for r in discogs.artist_releases(release.artist_id, per_page=15):
                 a = (r.get("artist") or "").strip() or primary
@@ -122,9 +140,10 @@ def discover_for_seed(
                     )
                 )
         except Exception as e:
-            print(f"    ! discogs artist_releases failed: {e}")
+            warn(f"discogs artist_releases failed: {e}")
 
     if release and release.styles:
+        say(f"Discogs: fresh releases in {', '.join(release.styles[:3])}…")
         try:
             style_label = " / ".join(release.styles[:3])
             for a, t, rid in discogs.style_recommendations(release, limit=15):
@@ -141,8 +160,9 @@ def discover_for_seed(
                     )
                 )
         except Exception as e:
-            print(f"    ! discogs style_recommendations failed: {e}")
+            warn(f"discogs style_recommendations failed: {e}")
 
+    say("Last.fm: scrobble-similar tracks…")
     try:
         for a, t in lastfm.similar_tracks(primary, seed.title, limit=10):
             candidates.append(
@@ -157,8 +177,9 @@ def discover_for_seed(
                 )
             )
     except Exception as e:
-        print(f"    ! lastfm similar_tracks failed: {e}")
+        warn(f"lastfm similar_tracks failed: {e}")
 
+    say("Last.fm: similar artists' top tracks…")
     try:
         for sim_artist in lastfm.similar_artists(primary, limit=4):
             for a, t in lastfm.artist_top_tracks(sim_artist, limit=2):
@@ -174,7 +195,7 @@ def discover_for_seed(
                     )
                 )
     except Exception as e:
-        print(f"    ! lastfm similar_artists failed: {e}")
+        warn(f"lastfm similar_artists failed: {e}")
 
     seen: set[tuple[str, str]] = set()
     seed_key = (primary.lower(), seed.title.lower())
@@ -276,16 +297,21 @@ def _balance_across_sources(candidates: list[Candidate], cap: int) -> list[Candi
     return out
 
 
-def resolve_to_youtube(candidates: list[Candidate]) -> list[Candidate]:
+def resolve_to_youtube(
+    candidates: list[Candidate], progress=None
+) -> list[Candidate]:
     """Look up a YouTube video ID per candidate (no API key — public search
     page scrape, cached). YouTube has nearly everything techno releases on
     Bandcamp/Discogs do, so this is the catch-all playable for candidates
     that aren't on Spotify."""
+    say = progress or (lambda m: None)
     out: list[Candidate] = []
-    for c in candidates:
+    n = len(candidates)
+    for i, c in enumerate(candidates, 1):
         if c.youtube_id:
             out.append(c)
             continue
+        say(f"YouTube: finding videos… {i}/{n}")
         try:
             vid = youtube.search_video_id(c.artist, c.title)
         except Exception:
@@ -294,19 +320,32 @@ def resolve_to_youtube(candidates: list[Candidate]) -> list[Candidate]:
     return out
 
 
-def resolve_to_spotify(candidates: list[Candidate]) -> list[Candidate]:
+def resolve_to_spotify(
+    candidates: list[Candidate], progress=None
+) -> list[Candidate]:
+    say = progress or (lambda m: None)
     out: list[Candidate] = []
-    for c in candidates:
-        try:
-            if c.source in _ALBUM_SOURCES:
-                hit = spotify.search_album(c.artist, c.title)
-                kind = "album"
-            else:
-                hit = spotify.search_track(c.artist, c.title)
-                kind = "track"
-        except Exception:
-            hit = None
-            kind = None
+    n = len(candidates)
+    unavailable = False
+    for i, c in enumerate(candidates, 1):
+        hit = None
+        kind = None
+        if not unavailable:
+            say(f"Spotify: matching candidates… {i}/{n}")
+            try:
+                if c.source in _ALBUM_SOURCES:
+                    hit = spotify.search_album(c.artist, c.title)
+                    kind = "album"
+                else:
+                    hit = spotify.search_track(c.artist, c.title)
+                    kind = "track"
+            except spotify.SpotifyUnavailable as e:
+                # Don't hammer a dead/rate-limited endpoint for every
+                # remaining candidate — they all fall back to search links.
+                unavailable = True
+                say(f"Spotify skipped ({e})")
+            except Exception:
+                pass
         if hit and hit.spotify_id:
             out.append(
                 c._replace(

@@ -56,3 +56,32 @@ def search_video_id(artist: str, title: str) -> str | None:
     # have no good match (rare on YouTube but possible).
     cache.put(url, params, {"video_id": video_id})
     return video_id
+
+
+def video_info(video_id: str) -> dict | None:
+    """Title + channel name for a video via the no-key oEmbed endpoint.
+    Returns {'title': …, 'author': …}, or None if the video is private,
+    removed, or the lookup failed."""
+    url = "https://www.youtube.com/oembed"
+    params = {"url": f"https://www.youtube.com/watch?v={video_id}", "format": "json"}
+    cached = cache.get(url, params)
+    if cached is not None:
+        return cached.get("info")
+
+    _throttle()
+    try:
+        r = requests.get(url, params=params, headers={"User-Agent": _UA}, timeout=15)
+        if r.status_code in (400, 401, 403, 404):
+            info = None  # video gone/private — a definitive miss, cacheable
+        else:
+            r.raise_for_status()
+            j = r.json()
+            info = {
+                "title": j.get("title") or "",
+                "author": j.get("author_name") or "",
+            }
+    except Exception:
+        return None  # transient failure — don't cache
+
+    cache.put(url, params, {"info": info})
+    return info

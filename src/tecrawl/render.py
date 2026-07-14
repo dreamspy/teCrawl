@@ -60,12 +60,44 @@ def discogs_search_url(artist: str, title: str) -> str:
     return f"https://www.discogs.com/search/?q={q}&type=release"
 
 
+# Registered as globals so the shared _seed_block macro (and every page
+# template) can use them without each render call re-passing the plumbing.
+_env.globals.update(
+    source_labels=discover.SOURCE_LABELS,
+    source_descriptions=discover.SOURCE_DESCRIPTIONS,
+    youtube_search_url=youtube_search_url,
+    spotify_search_url=spotify_search_url,
+    lastfm_url=lastfm_url,
+    discogs_search_url=discogs_search_url,
+)
+
+
+def render_template(name: str, **ctx) -> str:
+    """Render any template in templates/ to a string (used by the web UI)."""
+    return _env.get_template(name).render(**ctx)
+
+
+def render_seed_fragment(
+    seed: spotify.Track,
+    release,
+    candidates: list[discover.Candidate],
+) -> str:
+    """The bare one-seed results block the quick-search page injects."""
+    return render_template(
+        "_fragment.html.j2",
+        seed=seed,
+        release=release,
+        groups=_group_by_source(candidates),
+    )
+
+
 def render(
     seed_blocks: list[
         tuple[spotify.Track, "discover.discogs.Release | None", list[discover.Candidate]]
     ],
     top_picks: list[discover.TopPick] | None = None,
     playlist_name: str = "",
+    folder: str | None = None,
 ) -> Path:
     config.OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     template = _env.get_template("recommendations.html.j2")
@@ -78,18 +110,13 @@ def render(
         top_picks=top_picks or [],
         playlist_name=playlist_name,
         generated_at=datetime.now().strftime("%Y-%m-%d %H:%M"),
-        source_labels=discover.SOURCE_LABELS,
-        source_descriptions=discover.SOURCE_DESCRIPTIONS,
-        youtube_search_url=youtube_search_url,
-        spotify_search_url=spotify_search_url,
-        lastfm_url=lastfm_url,
-        discogs_search_url=discogs_search_url,
     )
     # Group outputs by playlist: output/<playlist name>/<timestamp>.html.
     # The folder name IS the display name (preserving case and spaces), minus
     # filesystem-unsafe characters. Reruns of the same playlist land in the
-    # same folder; different playlists get different folders.
-    folder = _folder_name(playlist_name) or "Unlabeled"
+    # same folder; different playlists get different folders. Quick searches
+    # pass an explicit folder so they all pool in one place.
+    folder = _folder_name(folder or playlist_name) or "Unlabeled"
     subdir = config.OUTPUT_DIR / folder
     subdir.mkdir(parents=True, exist_ok=True)
     path = subdir / f"{datetime.now().strftime('%Y%m%d-%H%M%S')}.html"

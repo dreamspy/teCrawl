@@ -56,6 +56,21 @@ def similar_artists(artist: str, limit: int = 5) -> list[str]:
     return [a["name"] for a in artists if a.get("name")]
 
 
+def search_track(query: str) -> tuple[str, str] | None:
+    """Free-text track search — the resolver fallback when the Spotify API
+    is down. Returns (artist, title) of the best match."""
+    data = _get("track.search", track=query, limit=5)
+    matches = data.get("results", {}).get("trackmatches", {}).get("track", [])
+    if isinstance(matches, dict):  # Last.fm collapses single results to a dict
+        matches = [matches]
+    for t in matches:
+        artist = (t.get("artist") or "").strip()
+        name = (t.get("name") or "").strip()
+        if artist and name:
+            return artist, name
+    return None
+
+
 def artist_top_tracks(artist: str, limit: int = 3) -> list[tuple[str, str]]:
     data = _get("artist.gettoptracks", artist=artist, limit=limit)
     tracks = data.get("toptracks", {}).get("track", [])

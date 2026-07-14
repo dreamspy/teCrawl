@@ -1,0 +1,73 @@
+{# One seed's full results block: header (playable seed) + candidate groups.
+   Used by both the playlist page and the quick-search page, so they can't
+   drift apart visually. `groups` is [(source, [Candidate, …]), …]. #}
+{% macro seed_block(seed, release, groups) %}
+<div class="seed">
+  <div class="seed-head">
+    <span class="seed-plays">
+      {% if seed.spotify_id %}
+        <button class="play" data-spotify-id="{{ seed.spotify_id }}" data-spotify-type="track" onclick="togglePlay(this)" title="Play preview / full track">▶</button>
+      {% else %}
+        <button class="play disabled" disabled title="Not on Spotify">▶</button>
+      {% endif %}
+      {% if seed.youtube_id %}
+        <button class="play yt" data-yt-id="{{ seed.youtube_id }}" onclick="togglePlayYT(this)" title="Play on YouTube">▶</button>
+      {% endif %}
+    </span>
+    <div class="seed-info">
+      <div class="seed-title">
+        {% if seed.spotify_id %}<a href="https://open.spotify.com/track/{{ seed.spotify_id }}" target="_blank" rel="noopener">{{ seed.title }}</a>{% else %}{{ seed.title }}{% endif %}
+      </div>
+      <div class="seed-artist">{{ seed.artist }}</div>
+    </div>
+    <span class="seed-actions">
+      <a href="{{ lastfm_url(seed.artist, seed.title) }}" target="_blank" rel="noopener" class="ext lfm" title="Browse on Last.fm">LFM↗</a>
+      {% if release and release.release_id %}
+        <a href="https://www.discogs.com/release/{{ release.release_id }}" target="_blank" rel="noopener" class="ext dgs" title="Open release on Discogs">DGS↗</a>
+      {% else %}
+        <a href="{{ discogs_search_url(seed.artist, seed.title) }}" target="_blank" rel="noopener" class="ext dgs" title="Search on Discogs">DGS↗</a>
+      {% endif %}
+    </span>
+  </div>
+  {% if groups %}
+    {% for source, group in groups %}
+    <div class="group-head">{{ source_labels.get(source, source) }} <span class="group-desc">— {{ source_descriptions.get(source, '') }}</span></div>
+    <div class="group">
+    {% for c in group %}
+    <div class="cand">
+      {% if c.spotify_id %}
+        <button class="play" data-spotify-id="{{ c.spotify_id }}" data-spotify-type="{{ c.spotify_type }}" onclick="togglePlay(this)" title="Play preview / full track">▶</button>
+      {% else %}
+        <button class="play disabled" disabled title="Not on Spotify">▶</button>
+      {% endif %}
+      <div class="cand-info">
+        <div class="cand-title">{{ c.title }}</div>
+        <div class="cand-artist">{{ c.artist }}</div>
+      </div>
+      <span class="detail" title="{{ c.source_detail }}">{{ c.source_detail }}</span>
+      {% if c.spotify_url %}
+        <a href="{{ c.spotify_url }}" target="_blank" rel="noopener">Spotify</a>
+      {% else %}
+        <a href="{{ spotify_search_url(c.artist, c.title) }}" target="_blank" rel="noopener" class="secondary">Search</a>
+      {% endif %}
+      <span class="yt-cell">
+        {% if c.youtube_id %}
+          <button class="play yt" data-yt-id="{{ c.youtube_id }}" onclick="togglePlayYT(this)" title="Play on YouTube">▶</button>
+        {% endif %}
+        <a href="{{ youtube_search_url(c.artist, c.title) }}" target="_blank" rel="noopener" class="yt-search" title="Search on YouTube (use if the auto-pick is wrong)">YT↗</a>
+      </span>
+      <a href="{{ lastfm_url(c.artist, c.title) }}" target="_blank" rel="noopener" class="ext lfm" title="Browse on Last.fm">LFM↗</a>
+      {% if c.discogs_release_id %}
+        <a href="https://www.discogs.com/release/{{ c.discogs_release_id }}" target="_blank" rel="noopener" class="ext dgs" title="Open release on Discogs">DGS↗</a>
+      {% else %}
+        <a href="{{ discogs_search_url(c.artist, c.title) }}" target="_blank" rel="noopener" class="ext dgs" title="Search on Discogs">DGS↗</a>
+      {% endif %}
+    </div>
+    {% endfor %}
+    </div>
+    {% endfor %}
+  {% else %}
+    <div class="empty">No candidates.</div>
+  {% endif %}
+</div>
+{% endmacro %}

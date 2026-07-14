@@ -2,6 +2,30 @@
 
 Automated techno discovery tool. Feed it tracks you like, get back a web page of similar tracks with one-click Spotify links.
 
+Two ways in: a whole playlist (CSV export, see Usage) or a single track via the interactive quick search.
+
+## Quick search: one track in, recommendations out
+
+The fastest way to use teCrawl. Start the server (`tecrawl serve` or `./open-output.sh`), open **http://localhost:8765/search** (the index page has the same search box), and paste any of:
+
+- a track name: `Blawan - Getatchew` (plain free text works too)
+- a Spotify track or album link: `https://open.spotify.com/track/…` (album links seed from the album's first track)
+- a YouTube link: `https://youtu.be/…`, `youtube.com/watch?v=…`, YouTube Music, or Shorts
+
+Progress streams live while Discogs and Last.fm are crawled (typically 30–90 s on a fresh seed, instant when cached), then the results appear inline with the usual inline players. Every search is also archived as a page under **Quick searches** on the index, with a permalink shown when it finishes.
+
+Terminal equivalent:
+
+```bash
+tecrawl quick "Blawan - Getatchew"      # also takes Spotify/YouTube links
+```
+
+Input-handling notes:
+
+- YouTube video titles are cleaned before matching: `PREMIERE:` prefixes, `(Official Video)`-style brackets, and trailing `[Label]` tags are stripped, while remix info like `(Original Mix)` survives. Auto-generated "Topic" channel videos resolve exactly from their metadata.
+- The parsed seed is verified against Spotify when possible, which also makes the seed itself playable.
+- Everything still works while the Spotify app credentials are dead: pasted Spotify links are read from Spotify's public embed page (no auth), free-text search falls back to Last.fm, and candidates keep their YouTube players plus Spotify search links.
+
 ## View your latest output
 
 ```bash
@@ -10,7 +34,7 @@ Automated techno discovery tool. Feed it tracks you like, get back a web page of
 
 That's it — the script activates the venv, starts the local server if it isn't already running, and opens http://localhost:8765/ in your browser. If the server is already up, it just reopens the URL (no double-start).
 
-From there, `/` lists every playlist you've run and `/<playlist-name>/` always serves the most recent output for that playlist — bookmark whichever URL you use most. Leave the server running; after each new `tecrawl` run, just refresh.
+From there, `/` lists every playlist you've run (plus the quick-search box) and `/<playlist-name>/` always serves the most recent output for that playlist — bookmark whichever URL you use most. Leave the server running; after each new `tecrawl` run, just refresh.
 
 **Phone access:** the server binds to all interfaces, so the URL is also reachable over [Tailscale or LAN](#viewing-from-your-phone). Always view via the server — YouTube embeds refuse `file://` origins and won't play.
 
@@ -89,9 +113,12 @@ Starts a tiny local HTTP server (default port 8765) and opens it in your browser
 
 Routing:
 
-- `/` — index page listing every playlist you've run, newest first.
+- `/` — index page: quick-search box plus every playlist you've run.
+- `/search` — interactive quick search (single track/link in, recommendations out).
 - `/<playlist-slug>/` — opens the most recent run for that playlist. Refresh after each new `tecrawl` call to see the updated page.
 - `/<playlist-slug>/<timestamp>.html` — a specific historical run.
+
+Flags: `tecrawl serve [port] [--no-open] [--local]`. `--no-open` skips auto-opening the browser; `--local` binds to 127.0.0.1 only (the default binds all interfaces so phones can reach it, see below).
 
 Output files are grouped on disk as `output/<playlist-slug>/<timestamp>.html`, so different playlists stay separate and you can keep multiple side by side.
 

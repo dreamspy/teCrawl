@@ -7,11 +7,13 @@
   - Cleaner code drafted in `src/tecrawl/spotify.py` (`_clean_artist`, `_clean_title`) — handles asterisk/numeric artist disambiguators, parens like `(Shackleton Mixes)`, trailing `Volum N`/`Part N`, and trailing format suffixes (` EP`, ` LP`) without a dash. **Untested** — needs verification once Spotify access is restored.
 - [ ] **Create a new Spotify app and test the resolver fix**
   - The previous app got hit with a 21-hour Retry-After cooldown after a too-fast probe loop, then was deleted. Spotify's dashboard currently blocks creating a replacement (account-level limit). Once that clears, recreate the app, drop new client ID/secret into `.env`, run `tecrawl ~/Downloads/2026.04.19_-_source_tracks.csv` and compare resolved counts against the 25-seed baseline (current avg ~3/20).
-- [ ] **Add Spotify rate-limit safety so we never hit the wall again**
-  - Throttle: enforce a min interval per request (Spotify's published soft limit is ~180 req/min for client-credentials, but punitive backoffs kick in much sooner under burst traffic)
-  - Honor `Retry-After` header on 429: read it, sleep that long (capped at e.g. 60s), retry once; if it's > the cap, abort the run cleanly and tell the user
-  - Cache negative results (currently `None` results aren't cached — they probably should be, with a shorter TTL than positive hits, so re-runs don't keep retrying the same misses)
-  - Consider a `--dry-run-spotify` flag for development that skips Spotify resolution entirely (useful for iterating on Discogs/Last.fm logic without touching the quota)
+  - Note (2026-07-14): everything now degrades gracefully without it. Quick search reads pasted Spotify links from the public embed page, free text falls back to Last.fm, and candidate resolution short-circuits after the first credential rejection. New credentials will transparently re-enable canonical seed matching and per-candidate Spotify links/players.
+- [x] **Add Spotify rate-limit safety so we never hit the wall again** (shipped 2026-07-14 alongside quick search)
+  - [x] Throttle: 0.5 s min interval between all Spotify requests (~120 req/min, well under punitive-backoff pace)
+  - [x] Honor `Retry-After` on 429: sleep + retry once when ≤ 60 s; longer waits park Spotify for that duration and the run degrades to search links
+  - [x] Circuit breaker: credential rejection (400/401/403 on the token POST) parks Spotify for 10 min, so a dead app costs one request per run instead of one per candidate
+  - [ ] Cache negative results with a shorter TTL (raw empty responses are cached 7d at the HTTP layer already; a dedicated shorter-TTL negative cache is still a possible refinement)
+  - [ ] Consider a `--dry-run-spotify` flag for development that skips Spotify resolution entirely (useful for iterating on Discogs/Last.fm logic without touching the quota)
 
 ## v2 — Discogs recommendations scraping (next, via Playwright)
 
@@ -80,7 +82,13 @@ Tested with `cloudscraper.create_scraper(...)` against `discogs.com/release/2637
 
 ## Archive
 
-### v2 — cross-seed scoring ✅ shipped 2026-04-19
+### v2 — interactive quick search ✅ shipped 2026-07-14
+
+- [x] `/search` page on the local server: paste a track name, a Spotify track/album link, or a YouTube link; progress streams live (SSE) and the results render inline with the usual players. The index page gets a search box; `tecrawl quick "<track|link>"` is the terminal equivalent
+- [x] Every search also persists as a normal output page under `output/Quick searches/` (shared index entry, permalink shown on completion)
+- [x] Input resolution (`seed_input.py`): YouTube via oEmbed with title cleaning (PREMIERE:/bracket noise stripped, `(Original Mix)` kept, "Topic" channels exact); Spotify links via API with a no-auth embed-page fallback; free text via Spotify or Last.fm search; helpful errors for playlist/artist/other links
+- [x] Seed itself is playable: Spotify button when resolvable plus a YouTube button (the exact video when the input was a YouTube link)
+- [x] Server rewrite (`web.py`): threaded (long runs don't block page loads), one-discovery-at-a-time lock, `--no-open` / `--local` flags; playlist page and quick search share one `_seed_block` template so they can't drift
 
 - [x] **Cross-seed scoring**: candidates surfaced from 3+ seeds bubble to a "★ Top picks" section at the top of the HTML, sorted by hit count, with a collapsible per-seed dropdown that includes a play button to audition each originating seed
 

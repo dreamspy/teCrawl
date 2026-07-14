@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>teCrawl — playlists</title>
+<style>
+{% include "_style.css" %}
+.wrap { max-width: 720px; }
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.25rem;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-bottom: .6rem;
+}
+.row .name { font-weight: 600; }
+a.row { color: var(--text); font-size: 1rem; }
+a.row:hover { color: var(--accent); text-decoration: none; }
+.none { color: var(--muted); padding: 1rem 0; font-size: .9rem; }
+.section-title {
+  color: var(--muted);
+  font-size: .8rem;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  margin: 2rem 0 .5rem;
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1>teCrawl</h1>
+<div class="meta">Paste one track, get recommendations · or browse past runs below</div>
+<form class="searchbar" action="/search" method="get">
+  <input name="q" placeholder="Track name, Spotify track link, or YouTube link" autocomplete="off">
+  <button type="submit">Dig</button>
+</form>
+<div class="hint">Single-track quick search · for whole playlists run <code>tecrawl &lt;csv&gt;</code></div>
+<div class="section-title">Playlists</div>
+{% if folders %}
+  {% for name in folders %}
+  <a class="row" href="/{{ name | urlencode }}/"><span class="name">{{ name }}</span></a>
+  {% endfor %}
+{% else %}
+  <div class="none">No runs yet. Search above, or run <code>tecrawl &lt;csv&gt;</code>.</div>
+{% endif %}
+</div>
+</body>
+</html>

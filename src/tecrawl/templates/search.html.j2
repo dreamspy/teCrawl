@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>teCrawl — quick search</title>
+<style>
+{% include "_style.css" %}
+.status {
+  display: flex;
+  align-items: center;
+  gap: .6rem;
+  color: var(--muted);
+  font-size: .9rem;
+  min-height: 1.6rem;
+  margin-bottom: 1.5rem;
+  flex-wrap: wrap;
+}
+.status.error { color: #ff7c7c; }
+.spinner {
+  width: 14px; height: 14px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin .8s linear infinite;
+  flex: none;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.elapsed { color: #555; }
+.permalink { margin-left: auto; }
+.seedline { color: var(--text); font-size: .95rem; margin: 0 0 .75rem; }
+.seedline .note { color: var(--muted); font-size: .8rem; }
+</style>
+</head>
+<body>
+<div class="wrap">
+<div class="meta"><a href="/">← All playlists</a></div>
+<h1>teCrawl — quick search</h1>
+<form class="searchbar" id="f">
+  <input id="q" name="q" placeholder="Track name, Spotify track link, or YouTube link" autocomplete="off" autofocus value="{{ q or '' }}">
+  <button id="go" type="submit">Dig</button>
+</form>
+<div class="hint">Works with <code>Artist - Title</code>, free text, <code>open.spotify.com/track/…</code> (album links too), <code>youtube.com/watch…</code> / <code>youtu.be/…</code></div>
+<div class="seedline" id="seedline" hidden></div>
+<div class="status" id="status" hidden>
+  <span class="spinner" id="spin" hidden></span>
+  <span id="msg"></span>
+  <span class="elapsed" id="elapsed"></span>
+  <a class="permalink" id="permalink" hidden target="_blank" rel="noopener">permalink</a>
+</div>
+<div id="results"></div>
+</div>
+<script src="https://open.spotify.com/embed/iframe-api/v1" async></script>
+<script>
+{% include "_player.js" %}
+</script>
+<script>
+(function () {
+  const form = document.getElementById('f');
+  const input = document.getElementById('q');
+  const go = document.getElementById('go');
+  const statusEl = document.getElementById('status');
+  const spin = document.getElementById('spin');
+  const msg = document.getElementById('msg');
+  const elapsedEl = document.getElementById('elapsed');
+  const permalink = document.getElementById('permalink');
+  const seedline = document.getElementById('seedline');
+  const results = document.getElementById('results');
+  let es = null, timer = null, t0 = 0;
+
+  function stop(finalMsg, isError) {
+    if (es) { es.close(); es = null; }
+    if (timer) { clearInterval(timer); timer = null; }
+    spin.hidden = true;
+    go.disabled = false;
+    msg.textContent = finalMsg;
+    statusEl.classList.toggle('error', !!isError);
+  }
+
+  function start(q) {
+    if (!q) return;
+    if (es) { es.close(); es = null; }
+    if (timer) { clearInterval(timer); timer = null; }
+    closeAllEmbeds();
+    results.innerHTML = '';
+    seedline.hidden = true;
+    seedline.textContent = '';
+    permalink.hidden = true;
+    statusEl.hidden = false;
+    statusEl.classList.remove('error');
+    spin.hidden = false;
+    go.disabled = true;
+    msg.textContent = 'Starting…';
+    elapsedEl.textContent = '';
+    t0 = Date.now();
+    timer = setInterval(function () {
+      elapsedEl.textContent = Math.round((Date.now() - t0) / 1000) + 's';
+    }, 1000);
+    history.replaceState(null, '', '/search?q=' + encodeURIComponent(q));
+
+    es = new EventSource('/api/discover?q=' + encodeURIComponent(q));
+    es.onmessage = function (e) {
+      let d;
+      try { d = JSON.parse(e.data); } catch (err) { return; }
+      if (d.type === 'status') {
+        msg.textContent = d.message;
+      } else if (d.type === 'seed') {
+        seedline.hidden = false;
+        seedline.textContent = '';
+        const strong = document.createElement('strong');
+        strong.textContent = d.artist + ' — ' + d.title;
+        seedline.appendChild(document.createTextNode('Digging from: '));
+        seedline.appendChild(strong);
+        if (d.note) {
+          const note = document.createElement('span');
+          note.className = 'note';
+          note.textContent = ' · ' + d.note;
+          seedline.appendChild(note);
+        }
+      } else if (d.type === 'result') {
+        results.innerHTML = d.html;
+        seedline.hidden = true;
+        if (d.permalink) { permalink.href = d.permalink; permalink.hidden = false; }
+        stop('Done in ' + d.elapsed + 's · ' + d.candidates + ' candidates', false);
+      } else if (d.type === 'error') {
+        stop(d.message, true);
+      }
+    };
+    es.onerror = function () {
+      if (es) stop('Connection lost · is the server still running?', true);
+    };
+  }
+
+  form.addEventListener('submit', function (ev) {
+    ev.preventDefault();
+    start(input.value.trim());
+  });
+  if (input.value.trim()) start(input.value.trim());
+})();
+</script>
+</body>
+</html>

@@ -1,3 +1,4 @@
+import json
 import re
 import time
 import unicodedata
@@ -12,6 +13,7 @@ class Track(NamedTuple):
     artist: str
     title: str
     spotify_id: str | None
+    youtube_id: str | None = None
 
 
 class Album(NamedTuple):
@@ -22,17 +24,75 @@ class Album(NamedTuple):
 
 _TOKEN: dict = {}
 
+# One failed credential check (or a punitive 429) parks Spotify for a while
+# so a 20-candidate resolution doesn't hammer a dead endpoint — this account
+# previously earned a 21-hour Retry-After from exactly that kind of loop.
+_UNAVAILABLE: dict = {}
+
+_LAST_REQUEST = [0.0]
+_MIN_INTERVAL = 0.5  # self-imposed ~120 req/min, far under punitive-backoff pace
+_MAX_RETRY_AFTER = 60  # sleep-and-retry short 429s; park anything longer
+
+
+class SpotifyUnavailable(Exception):
+    """The Spotify Web API is unusable right now (bad credentials or rate
+    limit). Callers degrade to search links instead of retrying."""
+
+
+def _mark_unavailable(reason: str, seconds: float) -> None:
+    _UNAVAILABLE["until"] = time.time() + seconds
+    _UNAVAILABLE["reason"] = reason
+
+
+def unavailable_reason() -> str | None:
+    if _UNAVAILABLE.get("until", 0) > time.time():
+        return _UNAVAILABLE["reason"]
+    return None
+
+
+def _throttle() -> None:
+    elapsed = time.time() - _LAST_REQUEST[0]
+    if elapsed < _MIN_INTERVAL:
+        time.sleep(_MIN_INTERVAL - elapsed)
+    _LAST_REQUEST[0] = time.time()
+
+
+def _retry_after(r: requests.Response) -> float:
+    try:
+        return float(r.headers.get("Retry-After", 2))
+    except (TypeError, ValueError):
+        return 2.0
+
 
 def _get_token() -> str:
     """Client credentials token. Used for /search (no user context needed)."""
     if _TOKEN.get("token") and _TOKEN.get("expires_at", 0) > time.time() + 30:
         return _TOKEN["token"]
+    reason = unavailable_reason()
+    if reason:
+        raise SpotifyUnavailable(reason)
+    if not (config.SPOTIFY_CLIENT_ID and config.SPOTIFY_CLIENT_SECRET):
+        _mark_unavailable("Spotify credentials missing from .env", 600)
+        raise SpotifyUnavailable(_UNAVAILABLE["reason"])
+    _throttle()
     r = requests.post(
         "https://accounts.spotify.com/api/token",
         data={"grant_type": "client_credentials"},
         auth=(config.SPOTIFY_CLIENT_ID, config.SPOTIFY_CLIENT_SECRET),
         timeout=15,
     )
+    if r.status_code == 429:
+        wait = _retry_after(r)
+        _mark_unavailable(f"Spotify rate-limited (retry in {wait:.0f}s)", wait)
+        raise SpotifyUnavailable(_UNAVAILABLE["reason"])
+    if r.status_code in (400, 401, 403):
+        # Dead/deleted app. Memoized so we fail fast once per 10 minutes
+        # instead of re-POSTing per candidate; re-probes in case .env is fixed.
+        _mark_unavailable(
+            "Spotify app credentials rejected — recreate the app and update .env",
+            600,
+        )
+        raise SpotifyUnavailable(_UNAVAILABLE["reason"])
     r.raise_for_status()
     payload = r.json()
     _TOKEN["token"] = payload["access_token"]
@@ -44,15 +104,26 @@ def _get(url: str, params: dict | None = None) -> dict:
     cached = cache.get(url, params)
     if cached is not None:
         return cached
+    token = _get_token()  # raises SpotifyUnavailable while parked
     headers = {
-        "Authorization": f"Bearer {_get_token()}",
+        "Authorization": f"Bearer {token}",
         "User-Agent": config.USER_AGENT,
     }
-    r = requests.get(url, headers=headers, params=params, timeout=15)
-    r.raise_for_status()
-    data = r.json()
-    cache.put(url, params, data)
-    return data
+    for attempt in (1, 2):
+        _throttle()
+        r = requests.get(url, headers=headers, params=params, timeout=15)
+        if r.status_code == 429:
+            wait = _retry_after(r)
+            if attempt == 1 and wait <= _MAX_RETRY_AFTER:
+                time.sleep(wait)
+                continue
+            _mark_unavailable(f"Spotify rate-limited (Retry-After {wait:.0f}s)", wait)
+            raise SpotifyUnavailable(_UNAVAILABLE["reason"])
+        r.raise_for_status()
+        data = r.json()
+        cache.put(url, params, data)
+        return data
+    raise SpotifyUnavailable("unreachable")  # loop always returns or raises
 
 
 def _clean_artist(artist: str) -> str:
@@ -195,6 +266,129 @@ def search_album(artist: str, title: str) -> Album | None:
     # return None here and let the caller decide). Keeping this comment as a
     # marker for the next iteration if the parens/asterisk fixes don't move
     # the needle enough.
+    return None
+
+
+def search_track_freetext(q: str) -> Track | None:
+    """Free-text track search, no artist sanity check. Used to resolve the
+    user's own typed query (they know what they meant), never for scraped
+    candidates."""
+    data = _get(
+        "https://api.spotify.com/v1/search",
+        params={"q": q, "type": "track", "limit": 1},
+    )
+    items = data.get("tracks", {}).get("items", [])
+    if not items:
+        return None
+    t = items[0]
+    names = [a.get("name", "") for a in t.get("artists", []) if a.get("name")]
+    if not (names and t.get("name")):
+        return None
+    return Track(artist=", ".join(names), title=t["name"], spotify_id=t.get("id"))
+
+
+_EMBED_NEXT_DATA_RE = re.compile(
+    r'<script id="__NEXT_DATA__" type="application/json">(.*?)</script>', re.S
+)
+_BROWSER_UA = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
+)
+
+
+def _embed_entity(kind: str, spotify_id: str) -> dict | None:
+    """No-auth metadata fallback: open.spotify.com/embed/<kind>/<id> is
+    server-rendered with the entity JSON inline (the iframe player needs it),
+    so pasted links resolve even while the API app is dead."""
+    url = f"https://open.spotify.com/embed/{kind}/{spotify_id}"
+    cached = cache.get(url, None)
+    if cached is not None:
+        return cached.get("entity")
+    try:
+        r = requests.get(url, headers={"User-Agent": _BROWSER_UA}, timeout=15)
+        r.raise_for_status()
+        m = _EMBED_NEXT_DATA_RE.search(r.text)
+        entity = None
+        if m:
+            blob = json.loads(m.group(1))
+            entity = (
+                blob.get("props", {})
+                .get("pageProps", {})
+                .get("state", {})
+                .get("data", {})
+                .get("entity")
+            )
+        if not isinstance(entity, dict):
+            entity = None
+    except Exception:
+        return None  # transient failure — don't cache
+    cache.put(url, None, {"entity": entity})
+    return entity
+
+
+def _join_artist_names(items: list) -> str:
+    return ", ".join(a.get("name", "") for a in items if a.get("name"))
+
+
+def get_track(track_id: str) -> Track | None:
+    """Resolve a pasted track link to (artist, title). Web API first, embed
+    page as the no-auth fallback."""
+    try:
+        data = _get(f"https://api.spotify.com/v1/tracks/{track_id}")
+        artist = _join_artist_names(data.get("artists", []))
+        if artist and data.get("name"):
+            return Track(artist=artist, title=data["name"], spotify_id=track_id)
+    except Exception:
+        pass
+    entity = _embed_entity("track", track_id)
+    if not entity:
+        return None
+    artist = _join_artist_names(entity.get("artists", []))
+    title = entity.get("name") or entity.get("title") or ""
+    if not (artist and title):
+        return None
+    return Track(artist=artist, title=title, spotify_id=track_id)
+
+
+def get_album_seed(album_id: str) -> tuple[Track, str] | None:
+    """An album link seeds from the album's first track. Returns
+    (track, album_title), or None if the album can't be read at all."""
+    try:
+        data = _get(f"https://api.spotify.com/v1/albums/{album_id}")
+        artist = _join_artist_names(data.get("artists", []))
+        items = data.get("tracks", {}).get("items", [])
+        if artist and items and items[0].get("name"):
+            first = items[0]
+            return (
+                Track(artist=artist, title=first["name"], spotify_id=first.get("id")),
+                data.get("name", ""),
+            )
+    except Exception:
+        pass
+    entity = _embed_entity("album", album_id)
+    if not entity:
+        return None
+    # Album embed entities carry the artist as a plain `subtitle` string
+    # (track entities have an `artists` list — albums don't).
+    artist = _join_artist_names(entity.get("artists", [])) or (
+        entity.get("subtitle") or ""
+    ).strip()
+    if not artist:
+        return None
+    album_title = entity.get("name") or entity.get("title") or ""
+    track_list = entity.get("trackList") or []
+    if isinstance(track_list, list) and track_list:
+        first = track_list[0]
+        title = first.get("title") or first.get("name") or ""
+        uri = first.get("uri") or ""
+        first_id = uri.rsplit(":", 1)[-1] if uri.startswith("spotify:track:") else None
+        if title:
+            first_artist = (first.get("subtitle") or "").strip() or artist
+            return Track(artist=first_artist, title=title, spotify_id=first_id), album_title
+    if album_title:
+        # Last resort: seed on the album title itself. Discogs matches release
+        # titles fine; the Last.fm track-similar angle just won't fire.
+        return Track(artist=artist, title=album_title, spotify_id=None), album_title
     return None
 
 
