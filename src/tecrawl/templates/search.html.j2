@@ -148,13 +148,16 @@
         notes.appendChild(div);
       } else if (d.type === 'seed_html') {
         results.insertAdjacentHTML('beforeend', d.html);
+        applyFeedbackStates(results);
       } else if (d.type === 'result') {
         results.innerHTML = d.html;
+        applyFeedbackStates(results);
         seedline.hidden = true;
         if (d.permalink) { permalink.href = d.permalink; permalink.hidden = false; }
         stop('Done in ' + d.elapsed + 's · ' + d.candidates + ' candidates', false);
       } else if (d.type === 'done') {
         if (d.tops_html) results.insertAdjacentHTML('afterbegin', d.tops_html);
+        applyFeedbackStates(results);
         if (d.permalink) { permalink.href = d.permalink; permalink.hidden = false; }
         stop('Done in ' + d.elapsed + 's · ' + d.seeds + ' seeds · '
              + d.candidates + ' candidates', false);

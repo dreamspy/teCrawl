@@ -153,8 +153,14 @@ Each row has:
 - **▶ green** play button (Spotify inline preview, when the candidate exists on Spotify)
 - **▶ red** play button (YouTube inline embed — works for nearly everything)
 - **Spotify** / **Search** link (deep link to Spotify or a search if not resolved)
+- **why?** — expands a one-line explanation of exactly why this track surfaced (which discovery angle, from which of your seeds)
+- **👍 / 👎** — record your verdict; click the same thumb again to undo. After a thumb, an optional note field opens (quick-tap chips like "totally irrelevant" / "more like this", or free text) — your own reason is the highest-signal data for tuning the algorithm later
 
 The **★ Top picks** section at the top shows candidates that surfaced from 3+ of your seed tracks — strong cross-signal.
+
+### Feedback (record-only for now)
+
+Every 👍/👎 appends one line to `feedback.jsonl` at the repo root (gitignored — personal taste data): track, verdict, discovery angle, originating seed, page, timestamp. Verdicts survive reloads and show up on every page, including old archived runs (state is applied from the server, so pages generated before a verdict still display it). **Deliberately no ranking effects yet**: the plan is to collect real data first, then design downranking/filtering on evidence. Requires viewing through `tecrawl serve` (the buttons talk to the local server).
 
 ### Re-running
 

@@ -123,6 +123,150 @@ function togglePlayYT(btn) {
   }
 }
 
+// --- 👍/👎 feedback (record-only: appends to feedback.jsonl, no ranking
+// effects yet) + per-row "why?" explanations. State is applied client-side
+// from /api/feedback so even old archived pages show current verdicts. ---
+let FEEDBACK = null;
+
+function fbKey(artist, title) {
+  return (artist + '||' + title).toLowerCase();
+}
+
+function paintFb(span) {
+  const k = fbKey(span.dataset.artist, span.dataset.title);
+  const v = FEEDBACK ? FEEDBACK[k] : undefined;
+  span.querySelector('.fb-up').classList.toggle('on', v === 'up');
+  span.querySelector('.fb-down').classList.toggle('on', v === 'down');
+}
+
+function applyFeedbackStates(root) {
+  if (!FEEDBACK) return;
+  (root || document).querySelectorAll('.fb').forEach(paintFb);
+}
+
+fetch('/api/feedback')
+  .then(function (r) { return r.json(); })
+  .then(function (map) { FEEDBACK = map || {}; applyFeedbackStates(); })
+  .catch(function () { FEEDBACK = {}; });
+
+function fbPayload(span, verdict, comment) {
+  const d = span.dataset;
+  const p = {
+    verdict: verdict,
+    artist: d.artist,
+    title: d.title,
+    source: d.source || '',
+    source_detail: d.detail || '',
+    seed: d.seed || '',
+    context: d.context || '',
+    page: location.pathname,
+  };
+  if (comment) p.comment = comment;
+  return p;
+}
+
+function postFb(payload) {
+  return fetch('/api/feedback', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  }).then(function (r) {
+    if (!r.ok) throw new Error('bad status');
+  });
+}
+
+function closeFbNote(row) {
+  const open = row.querySelector('.fb-note');
+  if (open) open.remove();
+}
+
+// After a thumb is set, offer an optional note explaining the verdict —
+// the user's own reason is the highest-signal data for tuning the
+// algorithm later. Chips save in one tap; free text saves on Enter/Save.
+function openFbNote(span, verdict) {
+  const row = span.closest('.cand, .pick');
+  closeFbNote(row);
+  const panel = document.createElement('div');
+  panel.className = 'fb-note';
+
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.maxLength = 300;
+  input.placeholder = verdict === 'down'
+    ? "optional: why is it bad? (helps tune the algorithm)"
+    : "optional: why is it good? (helps tune the algorithm)";
+
+  function saveNote(text) {
+    const t = (text || '').trim();
+    if (!t) { panel.remove(); return; }
+    postFb(fbPayload(span, verdict, t)).then(function () {
+      panel.innerHTML = '';
+      const ok = document.createElement('span');
+      ok.className = 'done';
+      ok.textContent = '✓ noted: ' + t;
+      panel.appendChild(ok);
+      setTimeout(function () { panel.remove(); }, 1500);
+    }).catch(function () {
+      alert('Saving the note failed — is the tecrawl server running?');
+    });
+  }
+
+  const chips = verdict === 'down'
+    ? ['totally irrelevant', 'wrong vibe', 'already know it']
+    : ['great find', 'more like this'];
+  chips.forEach(function (label) {
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.textContent = label;
+    chip.onclick = function () { saveNote(label); };
+    panel.appendChild(chip);
+  });
+
+  input.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') saveNote(input.value);
+    if (e.key === 'Escape') panel.remove();
+  });
+  panel.appendChild(input);
+
+  const save = document.createElement('button');
+  save.type = 'button';
+  save.className = 'save';
+  save.textContent = 'Save note';
+  save.onclick = function () { saveNote(input.value); };
+  panel.appendChild(save);
+
+  row.appendChild(panel);
+  input.focus();
+}
+
+function sendFeedback(btn, verdict) {
+  const span = btn.closest('.fb');
+  const d = span.dataset;
+  const k = fbKey(d.artist, d.title);
+  const current = FEEDBACK && FEEDBACK[k];
+  const v = current === verdict ? 'clear' : verdict; // same thumb again = undo
+  postFb(fbPayload(span, v)).then(function () {
+    if (!FEEDBACK) FEEDBACK = {};
+    if (v === 'clear') delete FEEDBACK[k]; else FEEDBACK[k] = v;
+    paintFb(span);
+    const row = span.closest('.cand, .pick');
+    if (v === 'clear') closeFbNote(row);
+    else openFbNote(span, v);
+  }).catch(function () {
+    alert('Saving feedback failed — is the tecrawl server running?');
+  });
+}
+
+function toggleWhy(btn) {
+  const row = btn.closest('.cand, .pick');
+  const existing = row.querySelector('.why-panel');
+  if (existing) { existing.remove(); return; }
+  const div = document.createElement('div');
+  div.className = 'why-panel';
+  div.textContent = btn.dataset.why;
+  row.appendChild(div);
+}
+
 function togglePlay(btn) {
   const cand = btn.closest('.cand, .seed-head, .pick, .seed-row');
   const existing = cand.querySelector('.embed');

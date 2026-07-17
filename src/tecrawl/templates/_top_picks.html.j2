@@ -34,6 +34,11 @@
     {% else %}
       <a href="{{ discogs_search_url(p.artist, p.title) }}" target="_blank" rel="noopener" class="ext dgs" title="Search on Discogs">DGS↗</a>
     {% endif %}
+    <span class="fb" data-artist="{{ p.artist }}" data-title="{{ p.title }}" data-source="{{ p.sources|join(',') }}" data-context="top_pick">
+      <button class="why" onclick="toggleWhy(this)" title="Why is this recommended?" data-why="Appeared from {{ p.hits }} of your seeds via: {% for s in p.sources %}{{ source_labels.get(s, s) }}{% if not loop.last %} + {% endif %}{% endfor %}. Open the {{ p.hits }}× seeds badge to audition the seeds that surfaced it.">why?</button>
+      <button class="fb-up" onclick="sendFeedback(this, 'up')" title="Good recommendation (saved to feedback.jsonl)">👍</button>
+      <button class="fb-down" onclick="sendFeedback(this, 'down')" title="Bad recommendation (saved to feedback.jsonl)">👎</button>
+    </span>
     <div class="seed-list" hidden>
       {% for s in p.seeds %}
       <div class="seed-row">

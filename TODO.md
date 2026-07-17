@@ -2,6 +2,8 @@
 
 ## v2 — high-leverage next steps
 
+- [ ] **"More" button per discovery-angle group** (user request 2026-07-17, queued behind the media-key queue): a `+ more` control in each group header ("Label-mate", "Same vibe", …) that fetches the next batch of candidates for that seed + angle. Paginate deeper into Discogs (`label_releases` / `artist_releases` / style search) or Last.fm for that one angle, resolve Spotify/YouTube, append rows (with why/👍/👎) to the group. Note: round 1 already over-fetches and then trims to `CANDIDATES_PER_SEED=20` via `_balance_across_sources`, so the first "more" click can often be served from the cached surplus before any new API calls. Served live by the server; archived pages would need a re-render to persist the extra rows.
+
 - [ ] **Seen / dismissed persistence**: tiny JSON file recording (artist, title) you've evaluated; re-runs skip them so each run is fresh material
 - [x] **Improve Spotify resolution rate** (often only 0–3 of 20): strip catalog/format suffixes from Discogs titles ("- EP", "(Original Mix)", catalog numbers), and fall back to track search when album search fails
   - Cleaner code drafted in `src/tecrawl/spotify.py` (`_clean_artist`, `_clean_title`) — handles asterisk/numeric artist disambiguators, parens like `(Shackleton Mixes)`, trailing `Volum N`/`Part N`, and trailing format suffixes (` EP`, ` LP`) without a dash. **Untested** — needs verification once Spotify access is restored.
@@ -71,7 +73,8 @@ Tested with `cloudscraper.create_scraper(...)` against `discogs.com/release/2637
 
 ## Nice-to-have
 
-- [ ] Thumbs up/down buttons in the HTML that write to a seen/dismissed file (would need a tiny local server, or a `<a>`-link hack)
+- [x] Thumbs up/down buttons in the HTML → shipped as 👍/👎 + "why?" per row, appending to `feedback.jsonl` via the local server (record-only by decision — collect data first)
+- [ ] Feedback-driven ranking: once `feedback.jsonl` has real data, design downranking/filtering (hide 👎 tracks? downweight 👎-heavy discovery angles?) on evidence
 - [ ] Filter by BPM range or Spotify audio features (energy, danceability) — note: Spotify deprecated audio-features for new apps in late 2024, check status
 - [ ] Exclude tracks already in your library / playlist
 

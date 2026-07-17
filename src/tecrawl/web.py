@@ -19,7 +19,7 @@ import urllib.parse
 import webbrowser
 from pathlib import Path
 
-from . import config, discover, localfiles, quick, render
+from . import config, discover, feedback, localfiles, quick, render
 
 # One discovery at a time: the API modules keep module-level throttle state,
 # and interleaved runs would fight over rate limits anyway. A second request
@@ -118,6 +118,8 @@ def serve(port: int = 8765, open_browser: bool = True, bind: str = "0.0.0.0") ->
                 return self._api_discover(parsed.query)
             if path == "/api/pick-folder":
                 return self._api_pick_folder()
+            if path == "/api/feedback":
+                return self._send_json(feedback.latest())
             # /<folder> or /<folder>/ → serve newest *.html in that folder
             parts = [p for p in path.strip("/").split("/") if p]
             if len(parts) == 1:
@@ -141,10 +143,34 @@ def serve(port: int = 8765, open_browser: bool = True, bind: str = "0.0.0.0") ->
                         return
             return super().do_GET()
 
+        def do_POST(self):
+            parsed = urllib.parse.urlsplit(self.path)
+            if urllib.parse.unquote(parsed.path) == "/api/feedback":
+                return self._api_feedback_post()
+            self.send_error(404)
+
+        def _api_feedback_post(self) -> None:
+            try:
+                n = min(int(self.headers.get("Content-Length") or 0), 100_000)
+                body = json.loads(self.rfile.read(n).decode("utf-8")) if n else {}
+                stored = feedback.record(body)
+            except (ValueError, UnicodeDecodeError) as e:
+                self._send_json({"error": str(e)}, status=400)
+                return
+            self._send_json({"ok": True, "verdict": stored["verdict"]})
+
         def _send_html(self, html_text: str) -> None:
             data = html_text.encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+
+        def _send_json(self, obj: dict, status: int = 200) -> None:
+            data = json.dumps(obj).encode("utf-8")
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
             self.send_header("Content-Length", str(len(data)))
             self.end_headers()
             self.wfile.write(data)
@@ -177,12 +203,7 @@ def serve(port: int = 8765, open_browser: bool = True, bind: str = "0.0.0.0") ->
                 body["path"] = path
             elif err:
                 body["error"] = err
-            data = json.dumps(body).encode("utf-8")
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json; charset=utf-8")
-            self.send_header("Content-Length", str(len(data)))
-            self.end_headers()
-            self.wfile.write(data)
+            self._send_json(body)
 
         def _api_discover(self, query: str) -> None:
             qs = urllib.parse.parse_qs(query)
@@ -333,6 +354,7 @@ def serve(port: int = 8765, open_browser: bool = True, bind: str = "0.0.0.0") ->
 
             seed_blocks = []
             total_cands = 0
+            run_seen: set = set()  # rotates "Same vibe" across seeds
             for i, st in enumerate(fscan.tracks, 1):
                 if dead[0]:
                     break
@@ -342,7 +364,7 @@ def serve(port: int = 8765, open_browser: bool = True, bind: str = "0.0.0.0") ->
                 release = None
                 try:
                     release, cands = discover.discover_for_seed(
-                        st.track, progress=say
+                        st.track, progress=say, run_seen=run_seen
                     )
                     cands = discover.resolve_to_spotify(cands, progress=say)
                     cands = discover.resolve_to_youtube(cands, progress=say)

@@ -20,6 +20,9 @@ output/
 # API response cache
 .cache/
 
+# Personal 👍/👎 feedback log (taste data, stays local)
+feedback.jsonl
+
 # Build artifacts
 build/
 dist/
