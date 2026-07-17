@@ -2,6 +2,8 @@ let SpotifyAPI = null;
 let activeController = null;
 let pendingClick = null;
 let activeYt = null;
+let QUEUE = null;        // {items: [{btn,row,artist,title}], idx} while playing all
+let silentKeeper = null; // near-silent looping <audio>, see startSilentKeeper()
 
 window.onSpotifyIframeApiReady = function (api) {
   SpotifyAPI = api;
@@ -61,7 +63,134 @@ const YT_ERRORS = {
   150: 'embedding disabled by the uploader',
 };
 
-function togglePlayYT(btn) {
+// --- Play-all queue with media-key control (YouTube-only) ---
+// Every .pick/.cand row with a YouTube id, in page order (top picks first),
+// deduped. The browser's Media Session API maps the keyboard's
+// play/pause/next/previous media keys onto the queue, so skipping works
+// with the page in the background.
+
+function silentWavUrl() {
+  // 0.1 s of 8 kHz 16-bit mono silence, built at runtime.
+  const n = 800, size = 44 + n * 2;
+  const buf = new ArrayBuffer(size), v = new DataView(buf);
+  const w = function (o, s) {
+    for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i));
+  };
+  w(0, 'RIFF'); v.setUint32(4, size - 8, true); w(8, 'WAVEfmt ');
+  v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, 8000, true); v.setUint32(28, 16000, true);
+  v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+  w(36, 'data'); v.setUint32(40, n * 2, true);
+  return URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
+}
+
+function startSilentKeeper() {
+  // The OS routes media keys to whichever frame audibly plays. The YouTube
+  // IFRAME would win and swallow next/previous. A near-silent loop makes
+  // THIS page an audible player too, so our Media Session handlers (with
+  // queue metadata) take the keys. Started from the click gesture.
+  if (!silentKeeper) {
+    silentKeeper = new Audio(silentWavUrl());
+    silentKeeper.loop = true;
+    silentKeeper.volume = 0.001;
+  }
+  silentKeeper.play().catch(function () {});
+}
+
+function stopSilentKeeper() {
+  if (silentKeeper) silentKeeper.pause();
+}
+
+function queueItems() {
+  const items = [];
+  const seen = new Set();
+  document.querySelectorAll('.pick, .cand').forEach(function (row) {
+    const btn = row.querySelector('.play.yt[data-yt-id]');
+    if (!btn) return;
+    const id = btn.dataset.ytId;
+    if (seen.has(id)) return;
+    seen.add(id);
+    const t = row.querySelector('.pick-title, .cand-title');
+    const a = row.querySelector('.pick-artist, .cand-artist');
+    items.push({
+      btn: btn,
+      row: row,
+      title: (t ? t.textContent : '').trim(),
+      artist: (a ? a.textContent : '').trim(),
+    });
+  });
+  return items;
+}
+
+function setupMediaSession() {
+  if (!('mediaSession' in navigator)) return;
+  const ms = navigator.mediaSession;
+  try {
+    ms.setActionHandler('play', function () {
+      if (activeYt) try { activeYt.playVideo(); ms.playbackState = 'playing'; } catch (e) {}
+      if (silentKeeper) silentKeeper.play().catch(function () {});
+    });
+    ms.setActionHandler('pause', function () {
+      if (activeYt) try { activeYt.pauseVideo(); ms.playbackState = 'paused'; } catch (e) {}
+    });
+    ms.setActionHandler('nexttrack', function () { if (QUEUE) queuePlay(QUEUE.idx + 1); });
+    ms.setActionHandler('previoustrack', function () { if (QUEUE) queuePlay(QUEUE.idx - 1); });
+  } catch (e) {}
+}
+
+function queuePlay(i) {
+  if (!QUEUE) return;
+  if (i < 0) i = 0;
+  if (i >= QUEUE.items.length) { queueStop(); return; }
+  QUEUE.idx = i;
+  const it = QUEUE.items[i];
+  document.querySelectorAll('.playing').forEach(function (r) { r.classList.remove('playing'); });
+  it.row.classList.add('playing');
+  try { it.row.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (e) {}
+  closeAllEmbeds();
+  togglePlayYT(it.btn, true);
+  if ('mediaSession' in navigator) {
+    try {
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: it.title, artist: it.artist, album: 'teCrawl',
+      });
+      navigator.mediaSession.playbackState = 'playing';
+    } catch (e) {}
+  }
+}
+
+function queueStop() {
+  if (!QUEUE) return;
+  QUEUE = null;
+  closeAllEmbeds();
+  stopSilentKeeper();
+  document.querySelectorAll('.playing').forEach(function (r) { r.classList.remove('playing'); });
+  if ('mediaSession' in navigator) {
+    try { navigator.mediaSession.playbackState = 'none'; } catch (e) {}
+  }
+  document.querySelectorAll('.playall').forEach(function (b) { b.textContent = '▶ Play all'; });
+}
+
+function toggleQueue() {
+  if (QUEUE) { queueStop(); return; }
+  if (!(window.YT && YT.Player)) {
+    alert('YouTube player API still loading — try again in a second.');
+    return;
+  }
+  const items = queueItems();
+  if (!items.length) {
+    alert('No YouTube-playable recommendations on this page.');
+    return;
+  }
+  QUEUE = { items: items, idx: -1 };
+  startSilentKeeper();
+  setupMediaSession();
+  document.querySelectorAll('.playall').forEach(function (b) { b.textContent = '⏹ Stop queue'; });
+  queuePlay(0);
+}
+
+function togglePlayYT(btn, fromQueue) {
+  if (!fromQueue && QUEUE) queueStop(); // manual click takes over from the queue
   const host = btn.closest('.cand, .seed-head, .pick, .seed-row');
   const existing = host.querySelector('.embed');
   if (existing) {
@@ -99,12 +228,19 @@ function togglePlayYT(btn) {
         onReady: function (e) {
           try { e.target.playVideo(); } catch (err) {}
         },
+        onStateChange: function (e) {
+          if (QUEUE && e.data === 0) queuePlay(QUEUE.idx + 1); // 0 = ended
+        },
         onError: function (e) {
           const why = YT_ERRORS[e.data] || ('error ' + e.data);
           const note = document.createElement('div');
           note.className = 'yt-error';
           note.textContent = 'Embed failed: ' + why + ' — use the YouTube link below.';
           wrap.insertBefore(note, fallback);
+          if (QUEUE) {
+            // Skip dead embeds so the queue keeps moving.
+            setTimeout(function () { if (QUEUE) queuePlay(QUEUE.idx + 1); }, 1200);
+          }
         },
       },
     });
@@ -268,6 +404,7 @@ function toggleWhy(btn) {
 }
 
 function togglePlay(btn) {
+  if (QUEUE) queueStop(); // manual Spotify play takes over from the queue
   const cand = btn.closest('.cand, .seed-head, .pick, .seed-row');
   const existing = cand.querySelector('.embed');
   if (existing) {

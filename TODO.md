@@ -82,6 +82,11 @@ Tested with `cloudscraper.create_scraper(...)` against `discogs.com/release/2637
 
 ## Archive
 
+### v2 — media-key play queue ✅ shipped 2026-07-17
+
+- [x] ▶ Play all on run pages + search results: every rec with a YouTube match plays in page order (★ Top picks first, deduped); playing row highlights + scrolls into view; auto-advance on end; dead embeds skipped; manual ▶ click stops the queue
+- [x] Media Session API wiring: keyboard media keys (play/pause/next/previous) drive the queue with the tab in the background; near-silent audio loop keeps the page registered as the OS player so the YouTube iframe doesn't swallow next/previous (confirmed working by user)
+
 ### v2 — folder input ✅ shipped 2026-07-17
 
 - [x] Accept a folder path as alternate input: `tecrawl <folder>` and pasting an absolute path (or `file://` URL) into the web search box; single audio files run as a quick search seeded from their tags

@@ -12,6 +12,10 @@
 <div class="meta"><a href="/">← All playlists</a></div>
 <h1>teCrawl{% if playlist_name %} — {{ playlist_name }}{% endif %}</h1>
 <div class="meta">Generated {{ generated_at }} · {{ seeds|length }} seed track{% if seeds|length != 1 %}s{% endif %}</div>
+<div class="queuebar">
+  <button class="playall" onclick="toggleQueue()">▶ Play all</button>
+  <span class="queuehint">plays every rec via YouTube · your keyboard's media keys skip tracks, even with this tab in the background</span>
+</div>
 
 {% include "_top_picks.html.j2" %}
 

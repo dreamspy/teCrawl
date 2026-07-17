@@ -67,6 +67,10 @@
   <span class="elapsed" id="elapsed"></span>
   <a class="permalink" id="permalink" hidden target="_blank" rel="noopener">permalink</a>
 </div>
+<div class="queuebar" id="queuebar" hidden>
+  <button class="playall" onclick="toggleQueue()">▶ Play all</button>
+  <span class="queuehint">plays every rec via YouTube · media keys skip tracks, even in the background</span>
+</div>
 <div id="results"></div>
 <div class="footer">server started {{ server_started }} · after updating teCrawl, restart <code>tecrawl serve</code> to pick up new features</div>
 </div>
@@ -87,6 +91,7 @@
   const permalink = document.getElementById('permalink');
   const seedline = document.getElementById('seedline');
   const notes = document.getElementById('notes');
+  const queuebar = document.getElementById('queuebar');
   const results = document.getElementById('results');
   let es = null, timer = null, t0 = 0;
 
@@ -104,11 +109,13 @@
     if (es) { es.close(); es = null; }
     if (timer) { clearInterval(timer); timer = null; }
     closeAllEmbeds();
+    if (typeof queueStop === 'function') queueStop();
     results.innerHTML = '';
     seedline.hidden = true;
     seedline.textContent = '';
     notes.hidden = true;
     notes.innerHTML = '';
+    queuebar.hidden = true;
     permalink.hidden = true;
     statusEl.hidden = false;
     statusEl.classList.remove('error');
@@ -153,11 +160,13 @@
         results.innerHTML = d.html;
         applyFeedbackStates(results);
         seedline.hidden = true;
+        queuebar.hidden = false;
         if (d.permalink) { permalink.href = d.permalink; permalink.hidden = false; }
         stop('Done in ' + d.elapsed + 's · ' + d.candidates + ' candidates', false);
       } else if (d.type === 'done') {
         if (d.tops_html) results.insertAdjacentHTML('afterbegin', d.tops_html);
         applyFeedbackStates(results);
+        queuebar.hidden = false;
         if (d.permalink) { permalink.href = d.permalink; permalink.hidden = false; }
         stop('Done in ' + d.elapsed + 's · ' + d.seeds + ' seeds · '
              + d.candidates + ' candidates', false);

@@ -158,6 +158,12 @@ Each row has:
 
 The **★ Top picks** section at the top shows candidates that surfaced from 3+ of your seed tracks — strong cross-signal.
 
+### ▶ Play all + media keys
+
+The **▶ Play all** button (top of every run page, and on search results) plays every recommendation on the page through its YouTube player, in page order (★ Top picks first), skipping duplicates and anything without a YouTube match. Your keyboard's **media keys** control the queue — play/pause, next track, previous track — even with the tab in the background, via the browser's Media Session API. The currently playing row is highlighted and scrolled into view; dead embeds are skipped automatically; clicking any ▶ manually stops the queue and takes over.
+
+Implementation note: a near-silent looping audio element keeps the *page* registered as the OS media player (otherwise the YouTube iframe grabs the media keys and next/previous wouldn't work). If media keys don't respond, click once anywhere on the page first, and check the browser's media hub (the ♪ icon in Chrome's toolbar) shows "teCrawl".
+
 ### Feedback (record-only for now)
 
 Every 👍/👎 appends one line to `feedback.jsonl` at the repo root (gitignored — personal taste data): track, verdict, discovery angle, originating seed, page, timestamp. Verdicts survive reloads and show up on every page, including old archived runs (state is applied from the server, so pages generated before a verdict still display it). **Deliberately no ranking effects yet**: the plan is to collect real data first, then design downranking/filtering on evidence. Requires viewing through `tecrawl serve` (the buttons talk to the local server).
