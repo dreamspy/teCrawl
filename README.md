@@ -44,7 +44,7 @@ From there, `/` lists every playlist you've run (plus the quick-search box) and 
 
 1. **Seed**: a CSV of tracks (export your Spotify playlist via [Exportify](https://watsonbox.github.io/exportify/) — one-time browser auth, takes ~10 seconds per playlist), or a local folder of audio files (artist/title read from tags, filename parsing as fallback).
 2. **Discover**: for each seed, pull candidates from two complementary sources:
-   - **Discogs** — same label, same artist, other artists on that label (the "adjacent in the catalog" finds, resolved as Spotify *album* links)
+   - **Discogs** — same label, same artist, other artists on that label, and Discogs' own "Recommendations" carousel scraped from the release page (the "adjacent in the catalog" finds, resolved as Spotify *album* links)
    - **Last.fm** — `track.getSimilar` and `artist.getSimilar` (the "people who scrobbled this also scrobbled" finds, resolved as Spotify *track* links)
 3. **Resolve**: look each candidate up in Spotify with an artist-name sanity check so we don't link the wrong thing.
 4. **Render**: generate a static HTML page grouped by seed, with inline Spotify previews (one-click ▶ to play) and YouTube fallback links.
@@ -74,6 +74,7 @@ Copy `.env.example` to `.env` and fill in:
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -e .
+playwright install chromium   # one-time, ~200MB — needed for Discogs' Recommendations carousel (no public API for it)
 ```
 
 ## Usage

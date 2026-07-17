@@ -13,6 +13,7 @@ _SOURCE_ORDER = [
     "discogs_label",
     "discogs_label_mate",
     "discogs_style",
+    "discogs_recommendation",
     "lastfm_track",
     "lastfm_artist",
 ]

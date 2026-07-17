@@ -17,22 +17,6 @@
   - [ ] Cache negative results with a shorter TTL (raw empty responses are cached 7d at the HTTP layer already; a dedicated shorter-TTL negative cache is still a possible refinement)
   - [ ] Consider a `--dry-run-spotify` flag for development that skips Spotify resolution entirely (useful for iterating on Discogs/Last.fm logic without touching the quota)
 
-## v2 — Discogs recommendations scraping (next, via Playwright)
-
-Goal: scrape the "Recommendations" section from Discogs release pages and add
-as a 6th discovery angle, tagged `discogs_recommendation` in the HTML output.
-There's no public API for this — the data only exists in the rendered page.
-
-- [ ] **Install Playwright + Chromium** (`pip install playwright && playwright install chromium`) — adds ~200MB but it's the only path that survives Cloudflare's current Managed Challenge
-- [ ] **Build `src/tecrawl/discogs_scrape.py`**: launch headless Chromium, navigate to `https://www.discogs.com/release/<id>`, wait for the recommendations section to render, parse out artist + title pairs (and ideally release IDs)
-- [ ] **Cache aggressively** — re-use the existing JSON cache pattern, key by release_id, longer TTL than the API cache (recommendations don't change daily)
-- [ ] **Throttle and respect ToS** — keep page navigations slow (e.g. 3–5 sec between requests) and run as logged-out (no scraping behind paywalls)
-- [ ] **Wire into `discover.py`**: only call when we have a seed `release.release_id`; add candidates with `source="discogs_recommendation"` and a new SOURCE_LABELS entry ("Recommended on Discogs")
-- [ ] **Update template**: new tag color for the new source
-
-### Why not cloudscraper (attempted 2026-04-19)
-Tested with `cloudscraper.create_scraper(...)` against `discogs.com/release/26378150`. Returned **403 Cf-Mitigated: challenge** with the modern "Enable JavaScript and cookies to continue" page. Cloudflare moved to Turnstile / Managed Challenge which requires real JS execution + Sec-CH-UA-* client hints; cloudscraper still solves the *old* JS challenge but is no longer effective for Discogs. Confirmed in `scratch/probe_cloudscraper.py`.
-
 ## v2 — MP3 folder support (leftovers)
 
 - [ ] Fall back to AcoustID fingerprinting when both tags and filename parsing fail (stretch)
@@ -86,6 +70,22 @@ Tested with `cloudscraper.create_scraper(...)` against `discogs.com/release/2637
 
 - [x] ▶ Play all on run pages + search results: every rec with a YouTube match plays in page order (★ Top picks first, deduped); playing row highlights + scrolls into view; auto-advance on end; dead embeds skipped; manual ▶ click stops the queue
 - [x] Media Session API wiring: keyboard media keys (play/pause/next/previous) drive the queue with the tab in the background; near-silent audio loop keeps the page registered as the OS player so the YouTube iframe doesn't swallow next/previous (confirmed working by user)
+
+### v2 — Discogs recommendations scraping ✅ shipped 2026-07-17
+
+Discogs' "Recommendations" carousel (visible on release/master pages) has no
+public API — it's a client-hydrated widget, not part of the REST API — and
+plain HTTP scraping is blocked by Cloudflare's Managed Challenge.
+
+- [x] **Install Playwright + Chromium** (`pip install playwright && playwright install chromium`) — added as a core dependency; headless Chromium gets past the Managed Challenge cleanly (confirmed live against discogs.com)
+- [x] **Build `src/tecrawl/discogs_scrape.py`**: navigates to `https://www.discogs.com/release/<id>`, waits for `#release-recommendations`, and parses each card's `aria-label="Artist - Title"` next to its `/release/<id>-slug` href — avoids depending on the section's build-hashed CSS module class names
+- [x] **Cache aggressively** — reuses `cache.py` (now takes an optional `ttl` override), keyed by release URL, 30-day TTL vs. the API's 7-day
+- [x] **Throttle and respect ToS** — 4s minimum between scrape navigations, logged-out, no paywalled content
+- [x] **Wire into `discover.py`**: called only when `release.release_id` is set, tagged `discogs_recommendation`, `SOURCE_LABELS`/`SOURCE_DESCRIPTIONS` entry ("Recommended on Discogs"), added to `_ALBUM_SOURCES` (Spotify resolution) and `render.py`'s `_SOURCE_ORDER`
+- [x] ~~Update template: new tag color for the new source~~ — the `.tag.*` CSS classes turned out to already be dead code (unreferenced by any template, group headers are colored by label text only), so skipped rather than extending unused styling
+
+### Why not cloudscraper (attempted 2026-04-19)
+Tested with `cloudscraper.create_scraper(...)` against `discogs.com/release/26378150`. Returned **403 Cf-Mitigated: challenge** with the modern "Enable JavaScript and cookies to continue" page. Cloudflare moved to Turnstile / Managed Challenge which requires real JS execution + Sec-CH-UA-* client hints; cloudscraper still solves the *old* JS challenge but is no longer effective for Discogs. Confirmed in `scratch/probe_cloudscraper.py`.
 
 ### v2 — folder input ✅ shipped 2026-07-17
 

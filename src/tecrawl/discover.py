@@ -1,6 +1,6 @@
 from typing import NamedTuple
 
-from . import discogs, lastfm, spotify, youtube
+from . import discogs, discogs_scrape, lastfm, spotify, youtube
 
 
 class Candidate(NamedTuple):
@@ -38,6 +38,7 @@ SOURCE_LABELS = {
     "discogs_artist": "Same artist",
     "discogs_label_mate": "Label-mate",
     "discogs_style": "Same vibe",
+    "discogs_recommendation": "Recommended on Discogs",
     "lastfm_track": "Sounds similar",
     "lastfm_artist": "Similar artist",
 }
@@ -50,6 +51,7 @@ SOURCE_DESCRIPTIONS = {
     "discogs_artist": "Discogs · other releases by this artist",
     "discogs_label_mate": "Discogs · other artists released on the same label",
     "discogs_style": "Discogs · fresh releases sharing the seed's styles",
+    "discogs_recommendation": "Discogs · users who dug this also dug these",
     "lastfm_track": "Last.fm · scrobble-based similar tracks",
     "lastfm_artist": "Last.fm · top tracks by similar artists",
 }
@@ -60,6 +62,7 @@ _ALBUM_SOURCES = {
     "discogs_artist",
     "discogs_label_mate",
     "discogs_style",
+    "discogs_recommendation",
 }
 
 CANDIDATES_PER_SEED = 20
@@ -180,6 +183,20 @@ def discover_for_seed(
                 )
         except Exception as e:
             warn(f"discogs style_recommendations failed: {e}")
+
+    if release and release.release_id:
+        say("Discogs: checking Recommendations…")
+        try:
+            for a, t, rid in discogs_scrape.recommendations(release.release_id, limit=10):
+                candidates.append(
+                    Candidate(
+                        a, t, "discogs_recommendation", "recommended on Discogs",
+                        None, None, None,
+                        discogs_release_id=rid,
+                    )
+                )
+        except Exception as e:
+            warn(f"discogs recommendations failed: {e}")
 
     say("Last.fm: scrobble-similar tracks…")
     try:

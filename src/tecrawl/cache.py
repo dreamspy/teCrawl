@@ -13,7 +13,7 @@ def _key(url: str, params: dict | None) -> str:
     return hashlib.sha256(payload.encode()).hexdigest()[:32]
 
 
-def get(url: str, params: dict | None = None) -> Any | None:
+def get(url: str, params: dict | None = None, ttl: int = CACHE_TTL_SECONDS) -> Any | None:
     config.CACHE_DIR.mkdir(parents=True, exist_ok=True)
     path = config.CACHE_DIR / f"{_key(url, params)}.json"
     if not path.exists():
@@ -21,7 +21,7 @@ def get(url: str, params: dict | None = None) -> Any | None:
     try:
         with path.open() as f:
             entry = json.load(f)
-        if entry.get("ts", 0) + CACHE_TTL_SECONDS < time.time():
+        if entry.get("ts", 0) + ttl < time.time():
             return None
         return entry["data"]
     except (json.JSONDecodeError, KeyError, OSError):
