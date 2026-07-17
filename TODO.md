@@ -31,12 +31,9 @@ There's no public API for this — the data only exists in the rendered page.
 ### Why not cloudscraper (attempted 2026-04-19)
 Tested with `cloudscraper.create_scraper(...)` against `discogs.com/release/26378150`. Returned **403 Cf-Mitigated: challenge** with the modern "Enable JavaScript and cookies to continue" page. Cloudflare moved to Turnstile / Managed Challenge which requires real JS execution + Sec-CH-UA-* client hints; cloudscraper still solves the *old* JS challenge but is no longer effective for Discogs. Confirmed in `scratch/probe_cloudscraper.py`.
 
-## v2 — MP3 folder support
+## v2 — MP3 folder support (leftovers)
 
-- [ ] Accept a folder path as alternate input
-- [ ] Parse `Artist - Title` from filenames (handle common patterns: `01 - Artist - Title.mp3`, `Artist - Title (Remix) [Label].mp3`)
-- [ ] Feed parsed (artist, title) into the same Discogs pipeline
-- [ ] Fall back to AcoustID fingerprinting if filename parsing fails (stretch)
+- [ ] Fall back to AcoustID fingerprinting when both tags and filename parsing fail (stretch)
 
 ## v3 — auto-upgrade MP3s to higher bitrate via torrent
 
@@ -81,6 +78,17 @@ Tested with `cloudscraper.create_scraper(...)` against `discogs.com/release/2637
 ---
 
 ## Archive
+
+### v2 — folder input ✅ shipped 2026-07-17
+
+- [x] Accept a folder path as alternate input: `tecrawl <folder>` and pasting an absolute path (or `file://` URL) into the web search box; single audio files run as a quick search seeded from their tags
+- [x] Artist/title from tags first via mutagen (ID3, MP4, Vorbis/FLAC, ASF; MP3/M4A/AAC/FLAC/OGG/Opus/WAV/AIFF/WMA/WavPack/APE), recursive scan, hidden files skipped, duplicate (artist, title) collapsed
+- [x] Filename parsing as fallback: `Artist - Title`, track-number prefixes (`01 - `, `03. `, vinyl `A1 `), `[Label]` suffixes, `Artist_-_Title` underscores; unreadable files are skipped and listed, never guessed
+- [x] Web folder runs stream each seed's results block as it finishes (new `seed_html`/`note`/`done` SSE events); ★ Top picks prepends on completion (shared `_top_picks.html.j2` include, so the playlist page can't drift); closing the tab finishes the current seed, persists what's done, and stops
+- [x] Runs persist under `output/<folder name>/` like any playlist run
+- [x] 📁 Browse button on index + search: `/api/pick-folder` opens the native macOS folder picker (osascript) and starts the run
+- [x] "server started …" footer on index + search — a stale pre-update server is visible at a glance (a stale server free-text-searching a pasted path was the one bug report during review)
+- [x] YouTube playback rebuilt on the official IFrame API (`youtube-nocookie` host, playsinline, programmatic play on ready): reliable autoplay, readable failure reasons under the player, plain-iframe fallback when the API script is blocked
 
 ### v2 — interactive quick search ✅ shipped 2026-07-14
 

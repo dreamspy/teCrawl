@@ -90,6 +90,11 @@ h1 { margin: 0 0 .5rem; font-size: 1.4rem; font-weight: 600; }
   color: #ff7c7c;
 }
 .yt-fallback:hover { color: #ff4c4c; text-decoration: underline; }
+.yt-error {
+  color: #ff7c7c;
+  font-size: .75rem;
+  margin-top: .35rem;
+}
 .yt-cell {
   display: inline-flex;
   gap: .35rem;

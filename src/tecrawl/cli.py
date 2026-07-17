@@ -2,7 +2,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from . import config, discover, quick, render, seeds, spotify, web
+from . import config, discover, localfiles, quick, render, seeds, spotify, web
 
 
 def _missing_required_keys() -> list[str]:
@@ -77,16 +77,17 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="tecrawl",
         description=(
-            "Generate techno recommendations from a CSV of seed tracks "
-            "(export your Spotify playlist with https://watsonbox.github.io/exportify/). "
-            "Other commands: `tecrawl quick <track|link>` for a one-off single-seed "
-            "search, `tecrawl serve` for the local web UI (required for YouTube "
-            "embeds — they reject file:// origins)."
+            "Generate techno recommendations from seed tracks: a CSV playlist "
+            "export (https://watsonbox.github.io/exportify/) or a folder of "
+            "audio files (MP3/M4A/FLAC/… — tags first, filename parsing as "
+            "fallback). Other commands: `tecrawl quick <track|link>` for a "
+            "one-off single-seed search, `tecrawl serve` for the local web UI "
+            "(required for YouTube embeds — they reject file:// origins)."
         ),
     )
     parser.add_argument(
         "source",
-        help="Path to a CSV file (Exportify format)",
+        help="Path to a CSV file (Exportify format) or a folder of audio files",
     )
     parser.add_argument(
         "--max-seeds",
@@ -114,16 +115,50 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 2
 
-    path = Path(args.source)
+    path = Path(args.source).expanduser()
     if not path.exists():
-        print(f"File not found: {path}", file=sys.stderr)
+        print(f"Not found: {path}", file=sys.stderr)
         return 1
 
-    print(f"Reading: {path}")
-    source_name, seed_list = seeds.from_csv(path)
-    if args.max_seeds:
+    if path.is_dir():
+        print(f"Scanning folder: {path}")
+        folder_scan = localfiles.scan(path)
+        for p, reason in folder_scan.skipped:
+            print(f"  ! skipped {p.name}: {reason}")
+        source_name = folder_scan.name
+        seed_list = [t.track for t in folder_scan.tracks]
+        n_tags = sum(1 for t in folder_scan.tracks if t.how == "tags")
+        n_fn = len(folder_scan.tracks) - n_tags
+        if not seed_list:
+            print(
+                "No usable audio files in that folder (need artist/title "
+                "tags, or 'Artist - Title' filenames).",
+                file=sys.stderr,
+            )
+            return 1
+        print(
+            f"Source: folder {source_name!r} ({len(seed_list)} seed tracks: "
+            f"{n_tags} from tags, {n_fn} from filenames)"
+        )
+    elif path.suffix.lower() in localfiles.AUDIO_EXTS:
+        got = localfiles.seed_from_file(path)
+        if not got:
+            print(
+                f"Couldn't read an artist/title from {path.name} "
+                "(no tags, filename isn't 'Artist - Title').",
+                file=sys.stderr,
+            )
+            return 1
+        artist, title, how = got
+        print(f"Single audio file → quick search: {artist} — {title} (from {how})")
+        return _run_quick([f"{artist} - {title}"])
+    else:
+        print(f"Reading: {path}")
+        source_name, seed_list = seeds.from_csv(path)
+        print(f"Source: {source_name!r} ({len(seed_list)} seed tracks)")
+    if args.max_seeds and len(seed_list) > args.max_seeds:
         seed_list = seed_list[: args.max_seeds]
-    print(f"Source: {source_name!r} ({len(seed_list)} seed tracks)")
+        print(f"Limited to first {len(seed_list)} seeds (--max-seeds)")
 
     seed_blocks: list[
         tuple[spotify.Track, "discover.discogs.Release | None", list[discover.Candidate]]
@@ -144,7 +179,7 @@ def main(argv: list[str] | None = None) -> int:
               f"{resolved_sp} on Spotify, {resolved_yt} on YouTube")
         seed_blocks.append((seed, release, candidates))
 
-    min_hits = 3
+    min_hits = discover.default_min_hits(len(seed_list))
     top_picks = discover.aggregate_top_picks(seed_blocks, min_hits=min_hits)
     print(f"\nTop picks (appear across {min_hits}+ seeds): {len(top_picks)}")
     out_path = render.render(

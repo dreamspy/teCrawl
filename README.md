@@ -2,7 +2,7 @@
 
 Automated techno discovery tool. Feed it tracks you like, get back a web page of similar tracks with one-click Spotify links.
 
-Two ways in: a whole playlist (CSV export, see Usage) or a single track via the interactive quick search.
+Three ways in: a whole playlist (CSV export, see Usage), a local folder of audio files (MP3/M4A/FLAC/…), or a single track via the interactive quick search.
 
 ## Quick search: one track in, recommendations out
 
@@ -11,6 +11,8 @@ The fastest way to use teCrawl. Start the server (`tecrawl serve` or `./open-out
 - a track name: `Blawan - Getatchew` (plain free text works too)
 - a Spotify track or album link: `https://open.spotify.com/track/…` (album links seed from the album's first track)
 - a YouTube link: `https://youtu.be/…`, `youtube.com/watch?v=…`, YouTube Music, or Shorts
+- a local folder of audio files: `/Users/you/Music/crate` (multi-seed — each track's results stream in as they finish, see below)
+- a single local audio file: `/Users/you/Music/track.mp3` (seeds a normal quick search from its tags)
 
 Progress streams live while Discogs and Last.fm are crawled (typically 30–90 s on a fresh seed, instant when cached), then the results appear inline with the usual inline players. Every search is also archived as a page under **Quick searches** on the index, with a permalink shown when it finishes.
 
@@ -40,7 +42,7 @@ From there, `/` lists every playlist you've run (plus the quick-search box) and 
 
 ## How it works
 
-1. **Seed**: a CSV of tracks (export your Spotify playlist via [Exportify](https://watsonbox.github.io/exportify/) — one-time browser auth, takes ~10 seconds per playlist).
+1. **Seed**: a CSV of tracks (export your Spotify playlist via [Exportify](https://watsonbox.github.io/exportify/) — one-time browser auth, takes ~10 seconds per playlist), or a local folder of audio files (artist/title read from tags, filename parsing as fallback).
 2. **Discover**: for each seed, pull candidates from two complementary sources:
    - **Discogs** — same label, same artist, other artists on that label (the "adjacent in the catalog" finds, resolved as Spotify *album* links)
    - **Last.fm** — `track.getSimilar` and `artist.getSimilar` (the "people who scrobbled this also scrobbled" finds, resolved as Spotify *track* links)
@@ -50,11 +52,11 @@ From there, `/` lists every playlist you've run (plus the quick-search box) and 
 ## Why this stack
 
 - **Discogs + Last.fm together**: they overlap a little but mostly find different things. Discogs gives you label/catalog adjacency (which matters in techno more than most genres). Last.fm gives you scrobble-based "sounds similar" recommendations.
-- **CSV via Exportify** for input: Spotify's Web API blocks new (Developer Mode) apps from reading playlist tracks directly, so we use a one-time export. CSV input also unifies with the planned MP3-folder workflow (v2).
+- **CSV via Exportify** for input: Spotify's Web API blocks new (Developer Mode) apps from reading playlist tracks directly, so we use a one-time export. Folder input (shipped) feeds the same pipeline from local files' tags.
 - **Spotify for output**: clean deep links + an inline IFrame-API player so you can audition without leaving the page.
 - **Static HTML output**: no server, no hosting, just open the file. Easy to archive past runs.
 
-See `TODO.md` for what's planned beyond v1 (MP3 ingest, Discogs recommendations scraping, monthly new-releases digest, auto-upgrading MP3s to higher bitrate, ListenBrainz as a fallback).
+See `TODO.md` for what's planned next (Discogs recommendations scraping, monthly new-releases digest, auto-upgrading MP3s to higher bitrate, ListenBrainz as a fallback).
 
 ## Setup
 
@@ -102,6 +104,22 @@ tecrawl input/My-Techno-Picks.csv --max-seeds 3
 ```
 
 The tool prints progress per seed (`[12/25] Artist — Title → 20 candidates, 7 on Spotify, 18 on YouTube`) and writes the result to `output/<timestamp>.html`.
+
+### Alternative: run on a folder of audio files
+
+Point tecrawl at a folder instead of a CSV and every audio file in it (recursively) becomes a seed:
+
+```bash
+tecrawl ~/Music/crate                  # folder name becomes the playlist name
+tecrawl ~/Music/crate --max-seeds 3    # smoke test
+```
+
+Or paste the folder path straight into the web search box — each seed's results stream onto the page as they finish, and the run is archived under the folder's name like any playlist run.
+
+- **Formats**: MP3, M4A/AAC, FLAC, OGG/Opus, WAV, AIFF, WMA, WavPack, APE.
+- **Artist/title come from tags first** (ID3, MP4, Vorbis, …). Untagged files fall back to filename parsing: `Artist - Title.mp3`, with track-number prefixes (`01 - `, `03. `, vinyl `A1 `), `[Label]` suffixes, and `Artist_-_Title` underscores handled.
+- Files with neither usable tags nor a parseable filename are **skipped and listed** — never guessed at. Duplicate (artist, title) pairs collapse into one seed.
+- A single audio file works too: `tecrawl ~/Music/track.mp3` runs a quick search seeded from its tags.
 
 ### Step 3: open the result
 
@@ -161,3 +179,10 @@ Firefox and Chrome honor the user-click gesture by default — no settings chang
 ### YouTube embeds need an HTTP origin
 
 YouTube's iframe player refuses `file://` origins (you'll see "Error 153 — Video player configuration error"). Always view the HTML via `tecrawl serve`, not by double-clicking the file.
+
+### YouTube: autoplay and "An error occurred"
+
+The red ▶ buttons drive the official YouTube IFrame API (privacy-enhanced `youtube-nocookie.com` host). When an embed can't play, teCrawl now prints the reason under the player (bad id, video removed, embedding disabled). If you instead get YouTube's generic **"An error occurred. Please try again later. (Playback ID: …)"** on many different videos, the cause is almost always in the browser, not the page:
+
+- **Ad blocker / content blocker** (uBlock, AdGuard, Brave shields, Pi-hole): they let the thumbnail through but block the actual `googlevideo.com` stream. Allowlist `localhost` (or your Tailscale hostname) in the blocker.
+- **Safari autoplay settings**: same as the Spotify note above, and the allow entry must match the hostname you're actually browsing from — allowing `localhost` does nothing when you open the Tailscale URL, and vice versa.

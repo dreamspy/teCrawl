@@ -28,17 +28,33 @@ a.row:hover { color: var(--accent); text-decoration: none; }
   text-transform: uppercase;
   margin: 2rem 0 .5rem;
 }
+.searchbar button.browse {
+  background: var(--card);
+  color: var(--text);
+  border: 1px solid var(--border);
+  font-weight: 400;
+  white-space: nowrap;
+}
+.searchbar button.browse:hover { border-color: var(--accent); color: var(--accent); background: var(--card); }
+.footer {
+  margin-top: 3rem;
+  padding-top: .75rem;
+  border-top: 1px solid var(--border);
+  color: #555;
+  font-size: .72rem;
+}
 </style>
 </head>
 <body>
 <div class="wrap">
 <h1>teCrawl</h1>
-<div class="meta">Paste one track, get recommendations · or browse past runs below</div>
-<form class="searchbar" action="/search" method="get">
-  <input name="q" placeholder="Track name, Spotify track link, or YouTube link" autocomplete="off">
+<div class="meta">Paste one track or a folder path, get recommendations · or browse past runs below</div>
+<form class="searchbar" action="/search" method="get" id="f">
+  <input name="q" id="q" placeholder="Track name, Spotify/YouTube link, or folder path" autocomplete="off">
+  <button id="browse" type="button" class="browse" title="Pick a folder of audio files (the picker opens on the Mac running the server)">📁 Browse</button>
   <button type="submit">Dig</button>
 </form>
-<div class="hint">Single-track quick search · for whole playlists run <code>tecrawl &lt;csv&gt;</code></div>
+<div class="hint">Quick search: one track, or a local folder of audio files (<code>/Users/you/Music/crate</code>) · for Spotify playlists run <code>tecrawl &lt;csv&gt;</code></div>
 <div class="section-title">Playlists</div>
 {% if folders %}
   {% for name in folders %}
@@ -47,6 +63,31 @@ a.row:hover { color: var(--accent); text-decoration: none; }
 {% else %}
   <div class="none">No runs yet. Search above, or run <code>tecrawl &lt;csv&gt;</code>.</div>
 {% endif %}
+<div class="footer">server started {{ server_started }} · after updating teCrawl, restart <code>tecrawl serve</code> to pick up new features</div>
 </div>
+<script>
+(function () {
+  const browse = document.getElementById('browse');
+  const input = document.getElementById('q');
+  const form = document.getElementById('f');
+  browse.addEventListener('click', async function () {
+    browse.disabled = true;
+    try {
+      const r = await fetch('/api/pick-folder');
+      const d = await r.json();
+      if (d.path) {
+        input.value = d.path;
+        form.submit();
+      } else if (d.error) {
+        alert(d.error);
+      }
+    } catch (e) {
+      alert('Folder picker failed — type or paste the path instead.');
+    } finally {
+      browse.disabled = false;
+    }
+  });
+})();
+</script>
 </body>
 </html>

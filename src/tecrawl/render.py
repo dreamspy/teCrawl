@@ -77,6 +77,12 @@ def render_template(name: str, **ctx) -> str:
     return _env.get_template(name).render(**ctx)
 
 
+def render_top_picks_fragment(top_picks: list[discover.TopPick]) -> str:
+    """The bare ★ Top picks block (folder search prepends it when done).
+    Empty string when there are no picks."""
+    return render_template("_top_picks.html.j2", top_picks=top_picks).strip()
+
+
 def render_seed_fragment(
     seed: spotify.Track,
     release,

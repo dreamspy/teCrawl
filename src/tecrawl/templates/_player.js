@@ -1,6 +1,7 @@
 let SpotifyAPI = null;
 let activeController = null;
 let pendingClick = null;
+let activeYt = null;
 
 window.onSpotifyIframeApiReady = function (api) {
   SpotifyAPI = api;
@@ -15,6 +16,10 @@ function closeAllEmbeds() {
   if (activeController) {
     try { activeController.destroy(); } catch (e) {}
     activeController = null;
+  }
+  if (activeYt) {
+    try { activeYt.destroy(); } catch (e) {}
+    activeYt = null;
   }
   document.querySelectorAll('.embed').forEach(function (e) {
     const host = e.closest('.cand, .seed-head, .pick, .seed-row');
@@ -46,6 +51,16 @@ function toggleSeedList(btn) {
   btn.classList.toggle('open', !wasOpen);
 }
 
+// YouTube error codes → human-readable reason (shown under the player so a
+// dead embed is diagnosable instead of YouTube's opaque "An error occurred").
+const YT_ERRORS = {
+  2: 'bad video id',
+  5: 'player error in this browser',
+  100: 'video removed or private',
+  101: 'embedding disabled by the uploader',
+  150: 'embedding disabled by the uploader',
+};
+
 function togglePlayYT(btn) {
   const host = btn.closest('.cand, .seed-head, .pick, .seed-row');
   const existing = host.querySelector('.embed');
@@ -57,15 +72,10 @@ function togglePlayYT(btn) {
   const id = btn.dataset.ytId;
   const wrap = document.createElement('div');
   wrap.className = 'embed';
-  const iframe = document.createElement('iframe');
-  iframe.className = 'yt';
-  iframe.src = 'https://www.youtube.com/embed/' + id + '?autoplay=1&rel=0';
-  iframe.allow = 'autoplay; encrypted-media';
-  iframe.allowFullscreen = true;
-  wrap.appendChild(iframe);
-  // Always-visible fallback link — when the uploader has disabled embedding
-  // (Error 153), the iframe shows "Watch on YouTube" but it's faster to give
-  // the user an explicit, obvious escape hatch right under the player.
+  const target = document.createElement('div');
+  wrap.appendChild(target);
+  // Always-visible fallback link — when the embed can't play (embedding
+  // disabled, stream blocked, …) this is the obvious escape hatch.
   const fallback = document.createElement('a');
   fallback.href = 'https://www.youtube.com/watch?v=' + id;
   fallback.target = '_blank';
@@ -75,6 +85,42 @@ function togglePlayYT(btn) {
   wrap.appendChild(fallback);
   host.appendChild(wrap);
   btn.textContent = '⏸';
+
+  if (window.YT && YT.Player) {
+    // IFrame API path: created inside the click gesture so autoplay is
+    // allowed; play again on 'ready' as belt-and-braces. The nocookie host
+    // avoids the cookie/consent-related "An error occurred" failures.
+    activeYt = new YT.Player(target, {
+      host: 'https://www.youtube-nocookie.com',
+      width: '100%',
+      videoId: id,
+      playerVars: { autoplay: 1, playsinline: 1, rel: 0 },
+      events: {
+        onReady: function (e) {
+          try { e.target.playVideo(); } catch (err) {}
+        },
+        onError: function (e) {
+          const why = YT_ERRORS[e.data] || ('error ' + e.data);
+          const note = document.createElement('div');
+          note.className = 'yt-error';
+          note.textContent = 'Embed failed: ' + why + ' — use the YouTube link below.';
+          wrap.insertBefore(note, fallback);
+        },
+      },
+    });
+    const iframe = activeYt.getIframe && activeYt.getIframe();
+    if (iframe) iframe.classList.add('yt');
+  } else {
+    // Plain-iframe fallback when the API script hasn't loaded (first click
+    // on a cold page, or the script is blocked by an extension).
+    const iframe = document.createElement('iframe');
+    iframe.className = 'yt';
+    iframe.src = 'https://www.youtube-nocookie.com/embed/' + id
+      + '?autoplay=1&playsinline=1&rel=0';
+    iframe.allow = 'autoplay; encrypted-media';
+    iframe.allowFullscreen = true;
+    wrap.replaceChild(iframe, target);
+  }
 }
 
 function togglePlay(btn) {

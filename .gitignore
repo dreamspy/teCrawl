@@ -44,5 +44,8 @@ node_modules/
 # Claude Code session state
 .claude/
 
+# Lavish review artifacts (local HTML review surfaces)
+.lavish/
+
 # Local debugging scripts (probes, dumps, one-off verifications)
 scratch/

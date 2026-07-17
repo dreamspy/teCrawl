@@ -13,55 +13,7 @@
 <h1>teCrawl{% if playlist_name %} — {{ playlist_name }}{% endif %}</h1>
 <div class="meta">Generated {{ generated_at }} · {{ seeds|length }} seed track{% if seeds|length != 1 %}s{% endif %}</div>
 
-{% if top_picks %}
-<div class="top-picks">
-  <h2>★ Top picks</h2>
-  <div class="sub">Surfaced from {{ top_picks|length }} candidate{% if top_picks|length != 1 %}s{% endif %} that appeared across multiple seed tracks — strong cross-signal.</div>
-  {% for p in top_picks %}
-  <div class="pick">
-    {% if p.spotify_id %}
-      <button class="play" data-spotify-id="{{ p.spotify_id }}" data-spotify-type="{{ p.spotify_type }}" onclick="togglePlay(this)" title="Play preview / full track">▶</button>
-    {% else %}
-      <button class="play disabled" disabled title="Not on Spotify">▶</button>
-    {% endif %}
-    <div class="pick-info">
-      <div class="pick-title">{{ p.title }}</div>
-      <div class="pick-artist">{{ p.artist }}</div>
-    </div>
-    <button class="hits-badge" onclick="toggleSeedList(this)" title="Show seeds that surfaced this">{{ p.hits }}× seeds</button>
-    {% if p.spotify_url %}
-      <a href="{{ p.spotify_url }}" target="_blank" rel="noopener">Spotify</a>
-    {% else %}
-      <a href="{{ spotify_search_url(p.artist, p.title) }}" target="_blank" rel="noopener" class="secondary">Search</a>
-    {% endif %}
-    <span class="yt-cell">
-      {% if p.youtube_id %}
-        <button class="play yt" data-yt-id="{{ p.youtube_id }}" onclick="togglePlayYT(this)" title="Play on YouTube">▶</button>
-      {% endif %}
-      <a href="{{ youtube_search_url(p.artist, p.title) }}" target="_blank" rel="noopener" class="yt-search" title="Search on YouTube (use if the auto-pick is wrong)">YT↗</a>
-    </span>
-    <a href="{{ lastfm_url(p.artist, p.title) }}" target="_blank" rel="noopener" class="ext lfm" title="Browse on Last.fm">LFM↗</a>
-    {% if p.discogs_release_id %}
-      <a href="https://www.discogs.com/release/{{ p.discogs_release_id }}" target="_blank" rel="noopener" class="ext dgs" title="Open release on Discogs">DGS↗</a>
-    {% else %}
-      <a href="{{ discogs_search_url(p.artist, p.title) }}" target="_blank" rel="noopener" class="ext dgs" title="Search on Discogs">DGS↗</a>
-    {% endif %}
-    <div class="seed-list" hidden>
-      {% for s in p.seeds %}
-      <div class="seed-row">
-        {% if s.spotify_id %}
-          <button class="play" data-spotify-id="{{ s.spotify_id }}" data-spotify-type="track" onclick="togglePlay(this)" title="Play seed preview">▶</button>
-        {% else %}
-          <button class="play disabled" disabled title="Not on Spotify">▶</button>
-        {% endif %}
-        <span>{{ s.display }}</span>
-      </div>
-      {% endfor %}
-    </div>
-  </div>
-  {% endfor %}
-</div>
-{% endif %}
+{% include "_top_picks.html.j2" %}
 
 {% from "_seed_block.html.j2" import seed_block %}
 {% for seed, release, groups in seeds %}
@@ -69,6 +21,7 @@
 {% endfor %}
 </div>
 <script src="https://open.spotify.com/embed/iframe-api/v1" async></script>
+<script src="https://www.youtube.com/iframe_api" async></script>
 <script>
 {% include "_player.js" %}
 </script>

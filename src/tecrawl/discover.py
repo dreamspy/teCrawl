@@ -65,6 +65,12 @@ _ALBUM_SOURCES = {
 CANDIDATES_PER_SEED = 20
 
 
+def default_min_hits(n_seeds: int) -> int:
+    """3+ cross-seed hits is the meaningful bar for top picks, but tiny runs
+    (a 2-file folder) can never reach it — degrade so they stay possible."""
+    return 3 if n_seeds >= 3 else 2
+
+
 def _primary_artist(seed_artist: str) -> str:
     # Exportify joins multiple artists with ';', Spotify display strings with ', '
     for sep in (";", ","):
