@@ -82,10 +82,18 @@ def _primary_artist(seed_artist: str) -> str:
 def discover_for_seed(
     seed: spotify.Track,
     progress=None,
+    run_seen: set[tuple[str, str]] | None = None,
 ) -> tuple[discogs.Release | None, list[Candidate]]:
     """`progress` (optional) receives human-readable stage messages — used by
     the quick-search page to stream live status. Warnings still print to the
-    console when no progress callback is given (the CLI path)."""
+    console when no progress callback is given (the CLI path).
+
+    `run_seen` (optional, multi-seed runs): style-search results are seed-
+    independent apart from the style tags, so seeds sharing styles would get
+    identical "Same vibe" lists — and those duplicates would fake cross-seed
+    top-picks signal. Passing one shared set per run makes each seed skip
+    style candidates already shown by earlier seeds and surface the next
+    slice instead."""
     say = progress or (lambda m: None)
 
     def warn(msg: str) -> None:
@@ -152,7 +160,12 @@ def discover_for_seed(
         say(f"Discogs: fresh releases in {', '.join(release.styles[:3])}…")
         try:
             style_label = " / ".join(release.styles[:3])
-            for a, t, rid in discogs.style_recommendations(release, limit=15):
+            # limit=30: the per-style searches already fetch 50 each (cached),
+            # so a deeper merged pool costs no extra API calls — it feeds the
+            # run_seen rotation across seeds that share styles.
+            for a, t, rid in discogs.style_recommendations(release, limit=30):
+                if run_seen is not None and (a.lower(), t.lower()) in run_seen:
+                    continue
                 candidates.append(
                     Candidate(
                         a,
@@ -213,7 +226,14 @@ def discover_for_seed(
         seen.add(key)
         unique.append(c)
 
-    return release, _balance_across_sources(unique, CANDIDATES_PER_SEED)
+    final = _balance_across_sources(unique, CANDIDATES_PER_SEED)
+    if run_seen is not None:
+        # Only the style candidates that actually made the page are burned;
+        # the unshown surplus stays available to later seeds.
+        for c in final:
+            if c.source == "discogs_style":
+                run_seen.add((c.artist.lower(), c.title.lower()))
+    return release, final
 
 
 def aggregate_top_picks(

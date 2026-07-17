@@ -163,11 +163,12 @@ def main(argv: list[str] | None = None) -> int:
     seed_blocks: list[
         tuple[spotify.Track, "discover.discogs.Release | None", list[discover.Candidate]]
     ] = []
+    run_seen: set[tuple[str, str]] = set()  # rotates "Same vibe" across seeds
     for i, seed in enumerate(seed_list, 1):
         print(f"[{i}/{len(seed_list)}] {seed.artist} — {seed.title}")
         release = None
         try:
-            release, candidates = discover.discover_for_seed(seed)
+            release, candidates = discover.discover_for_seed(seed, run_seen=run_seen)
             candidates = discover.resolve_to_spotify(candidates)
             candidates = discover.resolve_to_youtube(candidates)
         except Exception as e:

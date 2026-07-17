@@ -1,4 +1,5 @@
 import time
+import unicodedata
 from typing import NamedTuple
 
 import requests
@@ -67,6 +68,51 @@ def _get(url: str, params: dict | None = None) -> dict:
     return data
 
 
+# Letters NFKD won't decompose (ø has no combining form, etc.) so "Rødhåd"
+# can match a stub spelled "Rodhad".
+_TRANSLIT = str.maketrans({
+    "ø": "o", "đ": "d", "ð": "d", "þ": "th", "æ": "ae", "œ": "oe",
+    "ł": "l", "ß": "ss",
+})
+
+
+def _normalize_name(s: str) -> str:
+    s = unicodedata.normalize("NFKD", s)
+    s = "".join(ch for ch in s if not unicodedata.combining(ch))
+    return s.casefold().translate(_TRANSLIT).strip()
+
+
+def _pick_result(results: list[dict], artist: str) -> dict | None:
+    """Best result whose artist actually matches the requested artist.
+    Search stub titles are 'Artist - Title'; require the requested artist to
+    appear in the artist segment (handles 'Burial (2)' disambiguation,
+    'Burial / Four Tet' splits, trailing asterisks) — Discogs search is fuzzy
+    enough that results[0] can be a completely unrelated artist's release,
+    and a wrong anchor poisons the label, artist AND style angles.
+
+    Among artist-matched stubs, prefer official releases on real labels:
+    bootleg remixes ("Unofficial Release" on "Not On Label (X Self-released)")
+    often outrank the actual record and would anchor the label angle on
+    junk."""
+    want = _normalize_name(artist)
+    if not want:
+        return None
+    matched: list[tuple[tuple, dict]] = []
+    for i, r in enumerate(results):
+        artist_part = (r.get("title") or "").partition(" - ")[0]
+        if want not in _normalize_name(artist_part):
+            continue
+        unofficial = "unofficial" in " ".join(r.get("format") or []).lower()
+        labels = [str(l) for l in (r.get("label") or [])]
+        no_real_label = not labels or all(
+            l.lower().startswith("not on label") for l in labels
+        )
+        matched.append(((unofficial, no_real_label, i), r))
+    if not matched:
+        return None
+    return min(matched)[1]
+
+
 def search_release(artist: str, title: str) -> Release | None:
     data = _get(
         "https://api.discogs.com/database/search",
@@ -77,17 +123,19 @@ def search_release(artist: str, title: str) -> Release | None:
             "per_page": 5,
         },
     )
-    results = data.get("results", [])
-    if not results:
+    hit = _pick_result(data.get("results", []), artist)
+    if not hit:
         data = _get(
             "https://api.discogs.com/database/search",
             params={"q": f"{artist} {title}", "type": "release", "per_page": 5},
         )
-        results = data.get("results", [])
-    if not results:
+        hit = _pick_result(data.get("results", []), artist)
+    if not hit:
+        # No artist-verified match: better no Discogs anchor than a wrong
+        # one (Last.fm angles still run for the seed).
         return None
 
-    rid = results[0].get("id")
+    rid = hit.get("id")
     if not rid:
         return None
 
