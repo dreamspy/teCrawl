@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>teCrawl — {{ folder }}</title>
+<style>
+{% include "_style.css" %}
+.wrap { max-width: 720px; }
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.25rem;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-bottom: .6rem;
+}
+.row .name { font-weight: 600; }
+.row .when { color: var(--muted); font-size: .8rem; white-space: nowrap; margin-left: 1rem; }
+a.row { color: var(--text); font-size: 1rem; }
+a.row:hover { color: var(--accent); text-decoration: none; }
+.footer {
+  margin-top: 3rem;
+  padding-top: .75rem;
+  border-top: 1px solid var(--border);
+  color: #555;
+  font-size: .72rem;
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+<div class="meta"><a href="/">← All playlists</a></div>
+<h1>{{ folder }}</h1>
+<div class="meta">{{ runs | length }} run{{ '' if runs | length == 1 else 's' }} · newest first</div>
+{% for r in runs %}
+<a class="row" href="/{{ folder | urlencode }}/{{ r.file | urlencode }}"><span class="name">{{ r.label }}</span><span class="when">{{ r.when }}</span></a>
+{% endfor %}
+<div class="footer">server started {{ server_started }} · after updating teCrawl, restart <code>tecrawl serve</code> to pick up new features</div>
+</div>
+</body>
+</html>

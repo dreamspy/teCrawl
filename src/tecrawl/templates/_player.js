@@ -169,10 +169,27 @@ function queueStop() {
     try { navigator.mediaSession.playbackState = 'none'; } catch (e) {}
   }
   document.querySelectorAll('.playall').forEach(function (b) { b.textContent = '▶ Play all'; });
+  document.querySelectorAll('.playall-mini').forEach(function (b) { b.textContent = '▶'; });
 }
 
-function toggleQueue() {
-  if (QUEUE) { queueStop(); return; }
+// Rows belonging to the section a play-all button lives in — a group-head's
+// section is the .group div right after it; the ★ Top picks button's
+// section is every .pick in its enclosing .top-picks block. Global header
+// buttons (fromEl omitted) have no section, so the queue starts at index 0.
+function sectionRows(fromEl) {
+  if (!fromEl) return null;
+  const groupHead = fromEl.closest('.group-head');
+  if (groupHead && groupHead.nextElementSibling && groupHead.nextElementSibling.classList.contains('group')) {
+    return groupHead.nextElementSibling.querySelectorAll('.cand');
+  }
+  const topPicks = fromEl.closest('.top-picks');
+  if (topPicks) return topPicks.querySelectorAll('.pick');
+  return null;
+}
+
+function toggleQueue(fromEl) {
+  const origin = fromEl || null;
+  if (QUEUE && QUEUE.originEl === origin) { queueStop(); return; }
   if (!(window.YT && YT.Player)) {
     alert('YouTube player API still loading — try again in a second.');
     return;
@@ -182,11 +199,21 @@ function toggleQueue() {
     alert('No YouTube-playable recommendations on this page.');
     return;
   }
-  QUEUE = { items: items, idx: -1 };
+  let startIdx = 0;
+  const rows = sectionRows(fromEl);
+  if (rows && rows.length) {
+    for (let i = 0; i < items.length; i++) {
+      if (Array.prototype.indexOf.call(rows, items[i].row) !== -1) { startIdx = i; break; }
+    }
+  }
+  QUEUE = { items: items, idx: -1, originEl: origin };
   startSilentKeeper();
   setupMediaSession();
-  document.querySelectorAll('.playall').forEach(function (b) { b.textContent = '⏹ Stop queue'; });
-  queuePlay(0);
+  document.querySelectorAll('.playall').forEach(function (b) { b.textContent = '▶ Play all'; });
+  document.querySelectorAll('.playall-mini').forEach(function (b) { b.textContent = '▶'; });
+  if (origin) origin.textContent = '⏹';
+  else document.querySelectorAll('.playall').forEach(function (b) { b.textContent = '⏹ Stop queue'; });
+  queuePlay(startIdx);
 }
 
 function togglePlayYT(btn, fromQueue) {
@@ -401,6 +428,68 @@ function toggleWhy(btn) {
   div.className = 'why-panel';
   div.textContent = btn.dataset.why;
   row.appendChild(div);
+}
+
+// --- "Show more" within a section: POST /api/more, append the returned rows
+// into this section's .group. Needs the tecrawl server running (a page opened
+// straight off disk just gets a "server running?" note). The section's Discogs
+// identifiers ride along on the button's data-* attributes; the already-shown
+// (artist,title) pairs are read from the DOM so a click never re-adds a row. ---
+function showMore(btn) {
+  if (btn.dataset.loading) return;
+  const group = btn.previousElementSibling; // the .group this button follows
+  if (!group || !group.classList.contains('group')) return;
+  const shown = [];
+  group.querySelectorAll('.cand').forEach(function (row) {
+    const t = row.querySelector('.cand-title');
+    const a = row.querySelector('.cand-artist');
+    if (t && a) shown.push([a.textContent.trim(), t.textContent.trim()]);
+  });
+  const orig = btn.dataset.orig || btn.textContent;
+  btn.dataset.orig = orig;
+  btn.dataset.loading = '1';
+  btn.disabled = true;
+  btn.textContent = '… loading';
+  const body = {
+    source: btn.dataset.source,
+    artist_id: btn.dataset.artistId || '',
+    label_id: btn.dataset.labelId || '',
+    release_id: btn.dataset.releaseId || '',
+    styles: btn.dataset.styles || '',
+    label: btn.dataset.label || '',
+    seed_artist: btn.dataset.seedArtist || '',
+    seed_title: btn.dataset.seedTitle || '',
+    page: parseInt(btn.dataset.page || '1', 10),
+    batch: parseInt(btn.dataset.batch || '10', 10),
+    shown: shown,
+  };
+  fetch('/api/more', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  }).then(function (r) {
+    if (!r.ok) throw new Error('bad status');
+    return r.json();
+  }).then(function (d) {
+    if (d.error) throw new Error(d.error);
+    if (d.rows) {
+      group.insertAdjacentHTML('beforeend', d.rows);
+      applyFeedbackStates(group);
+    }
+    btn.dataset.page = String(d.next_page || (parseInt(btn.dataset.page || '1', 10) + 1));
+    delete btn.dataset.loading;
+    if (d.exhausted || !d.count) {
+      btn.textContent = d.count ? 'No more to load' : 'Nothing more found';
+      btn.disabled = true; // stays disabled — the source is tapped out
+    } else {
+      btn.textContent = orig;
+      btn.disabled = false;
+    }
+  }).catch(function () {
+    delete btn.dataset.loading;
+    btn.textContent = 'Load failed — is the server running?';
+    setTimeout(function () { btn.textContent = orig; btn.disabled = false; }, 2500);
+  });
 }
 
 function togglePlay(btn) {

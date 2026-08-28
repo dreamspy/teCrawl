@@ -40,6 +40,17 @@
   white-space: nowrap;
 }
 .searchbar button.browse:hover { border-color: var(--accent); color: var(--accent); background: var(--card); }
+.opts {
+  display: flex;
+  align-items: center;
+  gap: .4rem;
+  margin: -0.5rem 0 1.25rem;
+  color: var(--muted);
+  font-size: .82rem;
+}
+.opts input { accent-color: var(--accent); cursor: pointer; }
+.opts label { cursor: pointer; user-select: none; }
+.opts .fresnote { color: #555; }
 .footer {
   margin-top: 3rem;
   padding-top: .75rem;
@@ -59,6 +70,10 @@
   <button id="go" type="submit">Dig</button>
 </form>
 <div class="hint">Works with <code>Artist - Title</code>, free text, <code>open.spotify.com/track/…</code> (album links too), <code>youtube.com/watch…</code> / <code>youtu.be/…</code>, or a local folder of audio files (<code>/Users/you/Music/crate</code>) — tags first, filenames as fallback</div>
+<div class="opts">
+  <input type="checkbox" id="fresh" {% if fresh %}checked{% endif %}>
+  <label for="fresh">Fresh dig <span class="fresnote">— skip the cache and re-fetch every source (slower)</span></label>
+</div>
 <div class="seedline" id="seedline" hidden></div>
 <div class="notes" id="notes" hidden></div>
 <div class="status" id="status" hidden>
@@ -83,6 +98,7 @@
 (function () {
   const form = document.getElementById('f');
   const input = document.getElementById('q');
+  const freshBox = document.getElementById('fresh');
   const go = document.getElementById('go');
   const statusEl = document.getElementById('status');
   const spin = document.getElementById('spin');
@@ -127,9 +143,11 @@
     timer = setInterval(function () {
       elapsedEl.textContent = Math.round((Date.now() - t0) / 1000) + 's';
     }, 1000);
-    history.replaceState(null, '', '/search?q=' + encodeURIComponent(q));
+    const fresh = freshBox && freshBox.checked;
+    const freshParam = fresh ? '&fresh=1' : '';
+    history.replaceState(null, '', '/search?q=' + encodeURIComponent(q) + freshParam);
 
-    es = new EventSource('/api/discover?q=' + encodeURIComponent(q));
+    es = new EventSource('/api/discover?q=' + encodeURIComponent(q) + freshParam);
     es.onmessage = function (e) {
       let d;
       try { d = JSON.parse(e.data); } catch (err) { return; }

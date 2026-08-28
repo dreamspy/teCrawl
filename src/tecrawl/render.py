@@ -2,6 +2,7 @@ import re
 import urllib.parse
 from datetime import datetime
 from pathlib import Path
+from types import SimpleNamespace
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
@@ -61,15 +62,31 @@ def discogs_search_url(artist: str, title: str) -> str:
     return f"https://www.discogs.com/search/?q={q}&type=release"
 
 
+def dig_url(artist: str, title: str) -> str:
+    """A plain internal link (not a JS handler) so the browser's own
+    click/cmd-click/middle-click behavior just works: normal click digs in
+    this tab, cmd/ctrl-click opens the new dig in a new tab. /search?q=...
+    auto-starts the search on load (see search.html.j2)."""
+    q = urllib.parse.quote(f"{artist} - {title}")
+    return f"/search?q={q}"
+
+
 # Registered as globals so the shared _seed_block macro (and every page
 # template) can use them without each render call re-passing the plumbing.
 _env.globals.update(
     source_labels=discover.SOURCE_LABELS,
+    # Angles a seed run can actually produce, so the seed block can name the
+    # ones that came back empty instead of just omitting them. "Same label"
+    # is display-order only: discover_for_seed files every label release as
+    # either same-artist or label-mate, so it's never an initial section and
+    # listing it as "nothing came back" would cry wolf on every page.
+    all_sources=[s for s in _SOURCE_ORDER if s != "discogs_label"],
     source_descriptions=discover.SOURCE_DESCRIPTIONS,
     youtube_search_url=youtube_search_url,
     spotify_search_url=spotify_search_url,
     lastfm_url=lastfm_url,
     discogs_search_url=discogs_search_url,
+    dig_url=dig_url,
 )
 
 
@@ -82,6 +99,18 @@ def render_top_picks_fragment(top_picks: list[discover.TopPick]) -> str:
     """The bare ★ Top picks block (folder search prepends it when done).
     Empty string when there are no picks."""
     return render_template("_top_picks.html.j2", top_picks=top_picks).strip()
+
+
+def render_more_rows(
+    seed_artist: str, seed_title: str, candidates: list[discover.Candidate]
+) -> str:
+    """The extra candidate rows the "Show more" button appends into a section.
+    Rendered through the same macro as the initial rows so they're identical.
+    Only seed.artist/.title are needed here (dig links + feedback context)."""
+    if not candidates:
+        return ""
+    seed = SimpleNamespace(artist=seed_artist, title=seed_title)
+    return render_template("_more_rows.html.j2", seed=seed, cands=candidates).strip()
 
 
 def render_seed_fragment(

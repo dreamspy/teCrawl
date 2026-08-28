@@ -11,20 +11,89 @@ Routing:
 
 import http.server
 import json
+import re
 import shutil
 import subprocess
 import threading
 import time
 import urllib.parse
 import webbrowser
+from datetime import datetime
 from pathlib import Path
 
-from . import config, discover, feedback, localfiles, quick, render
+from . import cache, config, discover, feedback, localfiles, quick, render
+
+# Run files are named <YYYYMMDD>-<HHMMSS>.html (see render.write_page). We parse
+# that back into a real timestamp for display and sorting; anything that doesn't
+# match (hand-dropped file, older naming) falls back to the file's mtime.
+_TS_RE = re.compile(r"^(\d{8})-(\d{6})$")
+_TITLE_RE = re.compile(r"<title>(.*?)</title>", re.IGNORECASE | re.DOTALL)
+
+
+def _run_timestamp(p: Path) -> datetime:
+    m = _TS_RE.match(p.stem)
+    if m:
+        try:
+            return datetime.strptime(m.group(1) + m.group(2), "%Y%m%d%H%M%S")
+        except ValueError:
+            pass
+    return datetime.fromtimestamp(p.stat().st_mtime)
+
+
+def _run_label(p: Path) -> str:
+    """The <title> of a run, minus the "teCrawl — " prefix, so each run in a
+    folder shows what it actually dug (the seed track / playlist name). Only
+    the head of the file is read since the title is right at the top."""
+    try:
+        with p.open("r", encoding="utf-8", errors="replace") as fh:
+            head = fh.read(2000)
+    except OSError:
+        return p.stem
+    m = _TITLE_RE.search(head)
+    if not m:
+        return p.stem
+    title = " ".join(m.group(1).split())
+    for sep in (" — ", " - "):
+        prefix = "teCrawl" + sep
+        if title.startswith(prefix):
+            return title[len(prefix):]
+    return title
+
+
+def _folder_summary(sub: Path) -> dict:
+    """Per-folder info for the index: how many runs and when the newest was."""
+    stamps = [_run_timestamp(p) for p in sub.glob("*.html")]
+    newest = max(stamps, default=None)
+    return {
+        "name": sub.name,
+        "count": len(stamps),
+        "when": newest.strftime("%Y-%m-%d %H:%M") if newest else "",
+        "sort": newest or datetime.min,
+    }
+
+
+def _folder_runs(sub: Path) -> list[dict]:
+    """Every run in a folder, newest first, labelled by its seed for browsing."""
+    runs = [
+        {
+            "file": p.name,
+            "label": _run_label(p),
+            "when": _run_timestamp(p).strftime("%Y-%m-%d %H:%M"),
+            "sort": _run_timestamp(p),
+        }
+        for p in sub.glob("*.html")
+    ]
+    runs.sort(key=lambda r: r["sort"], reverse=True)
+    return runs
 
 # One discovery at a time: the API modules keep module-level throttle state,
 # and interleaved runs would fight over rate limits anyway. A second request
 # queues (with a status message) until the first finishes.
 _RUN_LOCK = threading.Lock()
+
+
+def _truthy(v: str) -> bool:
+    return v.strip().lower() in ("1", "true", "on", "yes")
 
 
 def _local_path(q: str) -> Path | None:
@@ -120,7 +189,7 @@ def serve(port: int = 8765, open_browser: bool = True, bind: str = "0.0.0.0") ->
                 return self._api_pick_folder()
             if path == "/api/feedback":
                 return self._send_json(feedback.latest())
-            # /<folder> or /<folder>/ → serve newest *.html in that folder
+            # /<folder> or /<folder>/ → list the runs in that folder
             parts = [p for p in path.strip("/").split("/") if p]
             if len(parts) == 1:
                 sub = out_dir / parts[0]
@@ -130,23 +199,16 @@ def serve(port: int = 8765, open_browser: bool = True, bind: str = "0.0.0.0") ->
                         self.send_header("Location", parsed.path + "/")
                         self.end_headers()
                         return
-                    htmls = sorted(sub.glob("*.html"))
-                    if htmls:
-                        self.path = (
-                            "/"
-                            + urllib.parse.quote(parts[0])
-                            + "/"
-                            + urllib.parse.quote(htmls[-1].name)
-                        )
-                    else:
-                        self.send_error(404, "No runs in this playlist yet")
-                        return
+                    return self._send_folder(parts[0], sub)
             return super().do_GET()
 
         def do_POST(self):
             parsed = urllib.parse.urlsplit(self.path)
-            if urllib.parse.unquote(parsed.path) == "/api/feedback":
+            path = urllib.parse.unquote(parsed.path)
+            if path == "/api/feedback":
                 return self._api_feedback_post()
+            if path == "/api/more":
+                return self._api_more()
             self.send_error(404)
 
         def _api_feedback_post(self) -> None:
@@ -158,6 +220,72 @@ def serve(port: int = 8765, open_browser: bool = True, bind: str = "0.0.0.0") ->
                 self._send_json({"error": str(e)}, status=400)
                 return
             self._send_json({"ok": True, "verdict": stored["verdict"]})
+
+        def _api_more(self) -> None:
+            """Extend one already-rendered section with the next batch of
+            candidates (the "Show more" button). Re-queries just that Discogs
+            angle deeper, resolves the new rows to Spotify/YouTube, and returns
+            them as ready-to-append HTML."""
+            try:
+                n = min(int(self.headers.get("Content-Length") or 0), 200_000)
+                body = json.loads(self.rfile.read(n).decode("utf-8")) if n else {}
+            except (ValueError, UnicodeDecodeError) as e:
+                self._send_json({"error": str(e)}, status=400)
+                return
+
+            source = (body.get("source") or "").strip()
+            if source not in discover.MORE_SOURCES:
+                self._send_json({"error": "unknown source"}, status=400)
+                return
+
+            def _int(v):
+                try:
+                    s = str(v).strip()
+                    return int(s) if s else None
+                except (TypeError, ValueError):
+                    return None
+
+            seed_artist = (body.get("seed_artist") or "").strip()
+            seed_title = (body.get("seed_title") or "").strip()
+            seed_primary = discover._primary_artist(seed_artist)
+            styles = [s for s in (body.get("styles") or "").split("|") if s]
+            shown: set[tuple[str, str]] = set()
+            for pair in body.get("shown") or []:
+                if isinstance(pair, (list, tuple)) and len(pair) == 2:
+                    shown.add((str(pair[0]).lower(), str(pair[1]).lower()))
+            shown.add((seed_primary.lower(), seed_title.lower()))
+            page = _int(body.get("page")) or 1
+            batch = max(1, min(_int(body.get("batch")) or 10, 25))
+
+            # Queue behind any running discovery: the API modules share
+            # module-level throttle state, and both hammering Discogs at once
+            # would trip the rate limit.
+            with _RUN_LOCK:
+                try:
+                    cands, next_page, exhausted = discover.more_candidates(
+                        source,
+                        seed_primary=seed_primary,
+                        label=(body.get("label") or "").strip() or None,
+                        label_id=_int(body.get("label_id")),
+                        artist_id=_int(body.get("artist_id")),
+                        release_id=_int(body.get("release_id")),
+                        styles=styles,
+                        shown=shown,
+                        page=page,
+                        batch=batch,
+                    )
+                    cands = discover.resolve_to_spotify(cands)
+                    cands = discover.resolve_to_youtube(cands)
+                except Exception as e:
+                    self._send_json({"error": f"more failed: {e}"}, status=500)
+                    return
+
+            self._send_json({
+                "rows": render.render_more_rows(seed_artist, seed_title, cands),
+                "count": len(cands),
+                "next_page": next_page,
+                "exhausted": exhausted,
+            })
 
         def _send_html(self, html_text: str) -> None:
             data = html_text.encode("utf-8")
@@ -176,10 +304,13 @@ def serve(port: int = 8765, open_browser: bool = True, bind: str = "0.0.0.0") ->
             self.wfile.write(data)
 
         def _send_index(self) -> None:
+            # Most-recently-active folders first, so today's digging is at the
+            # top instead of buried under alphabetically-earlier old playlists.
             folders = sorted(
-                (p.name for p in out_dir.iterdir()
+                (_folder_summary(p) for p in out_dir.iterdir()
                  if p.is_dir() and any(p.glob("*.html"))),
-                key=str.lower,
+                key=lambda f: f["sort"],
+                reverse=True,
             )
             self._send_html(
                 render.render_template(
@@ -189,11 +320,27 @@ def serve(port: int = 8765, open_browser: bool = True, bind: str = "0.0.0.0") ->
                 )
             )
 
+        def _send_folder(self, name: str, sub: Path) -> None:
+            runs = _folder_runs(sub)
+            if not runs:
+                self.send_error(404, "No runs in this playlist yet")
+                return
+            self._send_html(
+                render.render_template(
+                    "folder.html.j2",
+                    folder=name,
+                    runs=runs,
+                    server_started=server_started,
+                )
+            )
+
         def _send_search(self, query: str) -> None:
             qs = urllib.parse.parse_qs(query)
             q = (qs.get("q") or [""])[0]
+            fresh = _truthy((qs.get("fresh") or [""])[0])
             self._send_html(render.render_template(
-                "search.html.j2", q=q, server_started=server_started,
+                "search.html.j2", q=q, fresh=fresh,
+                server_started=server_started,
             ))
 
         def _api_pick_folder(self) -> None:
@@ -208,6 +355,7 @@ def serve(port: int = 8765, open_browser: bool = True, bind: str = "0.0.0.0") ->
         def _api_discover(self, query: str) -> None:
             qs = urllib.parse.parse_qs(query)
             q = (qs.get("q") or [""])[0].strip()
+            fresh = _truthy((qs.get("fresh") or [""])[0])
 
             self.send_response(200)
             self.send_header("Content-Type", "text/event-stream; charset=utf-8")
@@ -268,6 +416,12 @@ def serve(port: int = 8765, open_browser: bool = True, bind: str = "0.0.0.0") ->
                     emit({"type": "status",
                           "message": "Another search is running · queued…"})
                     _RUN_LOCK.acquire()
+                # Bypass is a module global in cache; set it only while we hold
+                # the single-run lock so concurrent requests can't clobber it.
+                cache.set_bypass(fresh)
+                if fresh:
+                    emit({"type": "note",
+                          "message": "Fresh dig — skipping cache, re-fetching every source."})
                 try:
                     if folder is not None:
                         self._run_folder(folder, emit)
@@ -301,6 +455,7 @@ def serve(port: int = 8765, open_browser: bool = True, bind: str = "0.0.0.0") ->
                         "candidates": len(result.candidates),
                     })
                 finally:
+                    cache.set_bypass(False)
                     _RUN_LOCK.release()
             except quick.InputError as e:
                 try:

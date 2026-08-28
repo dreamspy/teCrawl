@@ -7,6 +7,18 @@ from . import config
 
 CACHE_TTL_SECONDS = 7 * 24 * 3600
 
+# When set, get() acts as a permanent miss so a dig re-fetches every source
+# from the network — a "fresh dig". put() still writes, so the run repopulates
+# the cache for next time (bypass affects reads only). Toggled per-run by the
+# server while it holds its single-run lock, so this module global is never
+# touched by two concurrent digs.
+_BYPASS_READS = False
+
+
+def set_bypass(on: bool) -> None:
+    global _BYPASS_READS
+    _BYPASS_READS = on
+
 
 def _key(url: str, params: dict | None) -> str:
     payload = json.dumps({"url": url, "params": params or {}}, sort_keys=True)
@@ -14,6 +26,8 @@ def _key(url: str, params: dict | None) -> str:
 
 
 def get(url: str, params: dict | None = None, ttl: int = CACHE_TTL_SECONDS) -> Any | None:
+    if _BYPASS_READS:
+        return None
     config.CACHE_DIR.mkdir(parents=True, exist_ok=True)
     path = config.CACHE_DIR / f"{_key(url, params)}.json"
     if not path.exists():

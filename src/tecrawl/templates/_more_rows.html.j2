@@ -1,0 +1,3 @@
+{# Bare candidate rows appended into a .group by the "Show more" button. #}
+{% from "_cand_row.html.j2" import cand_row %}
+{% for c in cands %}{{ cand_row(c, seed) }}{% endfor %}

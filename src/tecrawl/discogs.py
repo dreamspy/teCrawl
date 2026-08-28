@@ -16,6 +16,11 @@ class Release(NamedTuple):
     release_id: int
     styles: list[str]
     year: int | None
+    # False when this is an artist-level stand-in rather than the seed
+    # track's own release (see `search_release`). The Discogs angles still
+    # run off it, but the page says so and the seed's DGS↗ link keeps
+    # pointing at a search instead of a release that isn't the seed.
+    exact: bool = True
 
 
 _LAST_REQUEST = [0.0]
@@ -113,7 +118,58 @@ def _pick_result(results: list[dict], artist: str) -> dict | None:
     return min(matched)[1]
 
 
+def _pick_artist_anchor(results: list[dict], artist: str) -> dict | None:
+    """Best release by this artist to stand in as the anchor when the exact
+    track can't be found. Same official/real-label preference as
+    `_pick_result`, then most-owned first — the artist's most widely held
+    record is the most representative read on their label and styles."""
+    want = _normalize_name(artist)
+    if not want:
+        return None
+    scored: list[tuple[tuple, dict]] = []
+    for i, r in enumerate(results):
+        artist_part = (r.get("title") or "").partition(" - ")[0]
+        if want not in _normalize_name(artist_part):
+            continue
+        unofficial = "unofficial" in " ".join(r.get("format") or []).lower()
+        labels = [str(l) for l in (r.get("label") or [])]
+        no_real_label = not labels or all(
+            l.lower().startswith("not on label") for l in labels
+        )
+        have = (r.get("community") or {}).get("have") or 0
+        scored.append(((unofficial, no_real_label, -have, i), r))
+    if not scored:
+        return None
+    return min(scored)[1]
+
+
+def _fetch_release(rid: int, fallback_artist: str, *, exact: bool) -> Release | None:
+    detail = _get(f"https://api.discogs.com/releases/{rid}")
+    labels = detail.get("labels", []) or []
+    artists = detail.get("artists", []) or []
+    return Release(
+        title=detail.get("title", ""),
+        artist=artists[0]["name"] if artists else fallback_artist,
+        label=labels[0].get("name") if labels else None,
+        label_id=labels[0].get("id") if labels else None,
+        artist_id=artists[0].get("id") if artists else None,
+        release_id=rid,
+        styles=list(detail.get("styles") or []),
+        year=detail.get("year") or None,
+        exact=exact,
+    )
+
+
 def search_release(artist: str, title: str) -> Release | None:
+    """Anchor release for the Discogs angles. Exact track match first; if
+    Discogs can't find the track, fall back to an artist-level anchor
+    (`exact=False`) rather than returning None.
+
+    The fallback matters more than it looks: Discogs' `track=` index only
+    covers tracklists it has actually indexed, and the `q=` fallback matches
+    release *titles*, so plenty of real album tracks match neither. Returning
+    None there silently killed five of the seven discovery angles and left
+    the page showing only Last.fm's similar artists."""
     data = _get(
         "https://api.discogs.com/database/search",
         params={
@@ -130,42 +186,41 @@ def search_release(artist: str, title: str) -> Release | None:
             params={"q": f"{artist} {title}", "type": "release", "per_page": 5},
         )
         hit = _pick_result(data.get("results", []), artist)
-    if not hit:
-        # No artist-verified match: better no Discogs anchor than a wrong
-        # one (Last.fm angles still run for the seed).
-        return None
+    if hit and hit.get("id"):
+        return _fetch_release(hit["id"], artist, exact=True)
 
-    rid = hit.get("id")
-    if not rid:
-        return None
-
-    detail = _get(f"https://api.discogs.com/releases/{rid}")
-    labels = detail.get("labels", []) or []
-    artists = detail.get("artists", []) or []
-    return Release(
-        title=detail.get("title", ""),
-        artist=artists[0]["name"] if artists else artist,
-        label=labels[0].get("name") if labels else None,
-        label_id=labels[0].get("id") if labels else None,
-        artist_id=artists[0].get("id") if artists else None,
-        release_id=rid,
-        styles=list(detail.get("styles") or []),
-        year=detail.get("year") or None,
+    # No release matched the track. Anchor on the artist instead: the label,
+    # label-mate, style and recommendation angles all still produce genuinely
+    # relevant digs, they're just keyed off the artist rather than this one
+    # track. Still artist-verified, so a wrong anchor stays impossible.
+    data = _get(
+        "https://api.discogs.com/database/search",
+        params={"artist": artist, "type": "release", "per_page": 25},
     )
+    anchor = _pick_artist_anchor(data.get("results", []), artist)
+    if not anchor or not anchor.get("id"):
+        return None
+    return _fetch_release(anchor["id"], artist, exact=False)
 
 
-def label_releases(label_id: int, per_page: int = 50) -> list[dict]:
+def label_releases(label_id: int, per_page: int = 50, page: int = 1) -> list[dict]:
     data = _get(
         f"https://api.discogs.com/labels/{label_id}/releases",
-        params={"per_page": per_page, "sort": "year", "sort_order": "desc"},
+        params={
+            "per_page": per_page, "page": page,
+            "sort": "year", "sort_order": "desc",
+        },
     )
     return data.get("releases", [])
 
 
-def artist_releases(artist_id: int, per_page: int = 30) -> list[dict]:
+def artist_releases(artist_id: int, per_page: int = 30, page: int = 1) -> list[dict]:
     data = _get(
         f"https://api.discogs.com/artists/{artist_id}/releases",
-        params={"per_page": per_page, "sort": "year", "sort_order": "desc"},
+        params={
+            "per_page": per_page, "page": page,
+            "sort": "year", "sort_order": "desc",
+        },
     )
     return data.get("releases", [])
 

@@ -18,6 +18,7 @@
   margin-bottom: .6rem;
 }
 .row .name { font-weight: 600; }
+.row .runs { color: var(--muted); font-size: .8rem; white-space: nowrap; margin-left: 1rem; }
 a.row { color: var(--text); font-size: 1rem; }
 a.row:hover { color: var(--accent); text-decoration: none; }
 .none { color: var(--muted); padding: 1rem 0; font-size: .9rem; }
@@ -57,8 +58,8 @@ a.row:hover { color: var(--accent); text-decoration: none; }
 <div class="hint">Quick search: one track, or a local folder of audio files (<code>/Users/you/Music/crate</code>) · for Spotify playlists run <code>tecrawl &lt;csv&gt;</code></div>
 <div class="section-title">Playlists</div>
 {% if folders %}
-  {% for name in folders %}
-  <a class="row" href="/{{ name | urlencode }}/"><span class="name">{{ name }}</span></a>
+  {% for f in folders %}
+  <a class="row" href="/{{ f.name | urlencode }}/"><span class="name">{{ f.name }}</span><span class="runs">{{ f.count }} run{{ '' if f.count == 1 else 's' }} · {{ f.when }}</span></a>
   {% endfor %}
 {% else %}
   <div class="none">No runs yet. Search above, or run <code>tecrawl &lt;csv&gt;</code>.</div>

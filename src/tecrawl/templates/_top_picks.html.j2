@@ -3,7 +3,7 @@
    identically. Expects `top_picks` in context; renders nothing when empty. #}
 {% if top_picks %}
 <div class="top-picks">
-  <h2>★ Top picks</h2>
+  <h2>★ Top picks <button class="playall-mini" onclick="toggleQueue(this)" title="Play this section, then continue into the rest of the page">▶</button></h2>
   <div class="sub">Surfaced from {{ top_picks|length }} candidate{% if top_picks|length != 1 %}s{% endif %} that appeared across multiple seed tracks — strong cross-signal.</div>
   {% for p in top_picks %}
   <div class="pick">
@@ -34,6 +34,7 @@
     {% else %}
       <a href="{{ discogs_search_url(p.artist, p.title) }}" target="_blank" rel="noopener" class="ext dgs" title="Search on Discogs">DGS↗</a>
     {% endif %}
+    <a href="{{ dig_url(p.artist, p.title) }}" class="ext dig" title="Dig from here — new search seeded on this track (⌘/Ctrl-click for a new tab)">Dig↗</a>
     <span class="fb" data-artist="{{ p.artist }}" data-title="{{ p.title }}" data-source="{{ p.sources|join(',') }}" data-context="top_pick">
       <button class="why" onclick="toggleWhy(this)" title="Why is this recommended?" data-why="Appeared from {{ p.hits }} of your seeds via: {% for s in p.sources %}{{ source_labels.get(s, s) }}{% if not loop.last %} + {% endif %}{% endfor %}. Open the {{ p.hits }}× seeds badge to audition the seeds that surfaced it.">why?</button>
       <button class="fb-up" onclick="sendFeedback(this, 'up')" title="Good recommendation (saved to feedback.jsonl)">👍</button>

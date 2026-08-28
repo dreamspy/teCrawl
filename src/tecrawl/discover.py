@@ -67,6 +67,16 @@ _ALBUM_SOURCES = {
 
 CANDIDATES_PER_SEED = 20
 
+# Angles the "Show more" button can extend — the Discogs list/search sources
+# that have genuine depth to paginate into. Recommendations (a fixed scraped
+# list) and the Last.fm angles have no deeper page, so they get no button.
+MORE_SOURCES = {
+    "discogs_artist",
+    "discogs_label",
+    "discogs_label_mate",
+    "discogs_style",
+}
+
 
 def default_min_hits(n_seeds: int) -> int:
     """3+ cross-seed hits is the meaningful bar for top picks, but tiny runs
@@ -114,9 +124,16 @@ def discover_for_seed(
         release = discogs.search_release(primary, seed.title)
     except Exception as e:
         warn(f"discogs search failed: {e}")
-    if release:
+    if release and release.exact:
         found_bits = [b for b in [release.label, str(release.year or "")] if b]
         say(f"Discogs: found “{release.title}” ({' · '.join(found_bits) or 'no label info'})")
+    elif release:
+        say(
+            f"Discogs: no match for this track — anchoring on “{release.title}”"
+            f" by {release.artist} instead"
+        )
+    else:
+        warn(f"no Discogs release found for {primary} — Discogs angles skipped")
 
     if release and release.label_id:
         say(f"Discogs: other releases on {release.label}…")
@@ -187,14 +204,21 @@ def discover_for_seed(
     if release and release.release_id:
         say("Discogs: checking Recommendations…")
         try:
+            rec_detail = (
+                "recommended on Discogs"
+                if release.exact
+                else f"recommended with {release.title}"
+            )
             for a, t, rid in discogs_scrape.recommendations(release.release_id, limit=10):
                 candidates.append(
                     Candidate(
-                        a, t, "discogs_recommendation", "recommended on Discogs",
+                        a, t, "discogs_recommendation", rec_detail,
                         None, None, None,
                         discogs_release_id=rid,
                     )
                 )
+        except discogs_scrape.ScrapeUnavailable as e:
+            warn(str(e))
         except Exception as e:
             warn(f"discogs recommendations failed: {e}")
 
@@ -238,12 +262,26 @@ def discover_for_seed(
     unique: list[Candidate] = []
     for c in candidates:
         key = (c.artist.lower(), c.title.lower())
-        if key in seen or key == seed_key:
+        if key == seed_key:
+            continue
+        # Discogs' own Recommendations frequently include the artist's other
+        # major releases — the same tracks "Same artist"/"Same label" already
+        # surface. Showing them again under "Recommended on Discogs" too (as
+        # opposed to silently dropping them here) is the point of that group:
+        # it's Discogs saying these specific releases are the strong picks.
+        if c.source != "discogs_recommendation" and key in seen:
             continue
         seen.add(key)
         unique.append(c)
 
-    final = _balance_across_sources(unique, CANDIDATES_PER_SEED)
+    # Discogs' Recommendations are a short, curated list (scraped, capped at
+    # 10) — round-robin balancing it against 5 other angles for a shared
+    # 20-slot budget would truncate it to ~3 items regardless of how many
+    # Discogs itself recommends. Balance the other angles as usual, then add
+    # the full recommendation set on top rather than competing for slots.
+    recommended = [c for c in unique if c.source == "discogs_recommendation"]
+    rest = [c for c in unique if c.source != "discogs_recommendation"]
+    final = _balance_across_sources(rest, CANDIDATES_PER_SEED) + recommended
     if run_seen is not None:
         # Only the style candidates that actually made the page are burned;
         # the unshown surplus stays available to later seeds.
@@ -338,6 +376,113 @@ def _balance_across_sources(candidates: list[Candidate], cap: int) -> list[Candi
             if len(out) >= cap:
                 break
     return out
+
+
+def more_candidates(
+    source: str,
+    *,
+    seed_primary: str,
+    label: str | None,
+    label_id: int | None,
+    artist_id: int | None,
+    release_id: int | None,
+    styles: list[str],
+    shown: set[tuple[str, str]],
+    page: int,
+    batch: int,
+) -> tuple[list[Candidate], int, bool]:
+    """Fetch the next `batch` *new* candidates for one already-rendered
+    section (the "Show more" button). `shown` is the set of (artist, title)
+    keys already on the page for this angle — used to skip duplicates so a
+    click always adds fresh rows. Returns (candidates, next_page, exhausted):
+    `next_page` is where the following click should resume; `exhausted` means
+    the source has nothing deeper to give.
+
+    Candidates come back unresolved (no Spotify/YouTube) — the caller resolves
+    them, matching the main discovery path."""
+    out: list[Candidate] = []
+
+    if source == "discogs_style":
+        # style_recommendations returns a ranked, one-per-artist list; there's
+        # no page cursor, so ask for enough to cover everything already shown
+        # plus the next batch and slice off the fresh tail.
+        rel = discogs.Release(
+            title="", artist=seed_primary, label=label, label_id=label_id,
+            artist_id=artist_id, release_id=release_id or 0,
+            styles=styles, year=None,
+        )
+        style_label = " / ".join(styles[:3])
+        want = len(shown) + batch + 15
+        ranked = discogs.style_recommendations(rel, limit=want)
+        for a, t, rid in ranked:
+            key = (a.lower(), t.lower())
+            if key in shown:
+                continue
+            shown.add(key)
+            out.append(Candidate(
+                a, t, "discogs_style", f"style: {style_label}",
+                None, None, None, discogs_release_id=rid,
+            ))
+            if len(out) >= batch:
+                break
+        # If the ranked pool was smaller than we asked for, we've hit bottom.
+        exhausted = len(ranked) < want
+        return out, page + 1, exhausted
+
+    # Artist / label sources: paginate the Discogs list endpoint. Keep pulling
+    # pages (bounded) until we've gathered `batch` fresh rows or run dry.
+    per_page = 50
+    exhausted = False
+    cur = page
+    for _ in range(6):  # page cap so a click can't spin forever
+        if source == "discogs_artist":
+            if not artist_id:
+                exhausted = True
+                break
+            stubs = discogs.artist_releases(artist_id, per_page=per_page, page=cur)
+        else:  # discogs_label / discogs_label_mate
+            if not label_id:
+                exhausted = True
+                break
+            stubs = discogs.label_releases(label_id, per_page=per_page, page=cur)
+        cur += 1
+        if not stubs:
+            exhausted = True
+            break
+        for r in stubs:
+            a = (r.get("artist") or "").strip()
+            t = (r.get("title") or "").strip()
+            if not t:
+                continue
+            if source == "discogs_artist":
+                a = a or seed_primary
+                detail = f"by {seed_primary}"
+            elif source == "discogs_label_mate":
+                # Label-mates only: the seed artist's own releases belong to
+                # the Same-artist section, not here.
+                if not a or a.lower() == seed_primary.lower():
+                    continue
+                detail = f"label: {label}" if label else "label-mate"
+            else:  # discogs_label — every release on the label
+                if not a:
+                    continue
+                detail = f"on {label}" if label else "same label"
+            key = (a.lower(), t.lower())
+            if key in shown:
+                continue
+            shown.add(key)
+            out.append(Candidate(
+                a, t, source, detail, None, None, None,
+                discogs_release_id=discogs.release_id_from_stub(r),
+            ))
+            if len(out) >= batch:
+                break
+        if len(out) >= batch:
+            break
+        if len(stubs) < per_page:  # last page of the label/artist catalogue
+            exhausted = True
+            break
+    return out, cur, exhausted
 
 
 def resolve_to_youtube(
