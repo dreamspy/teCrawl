@@ -36,6 +36,17 @@ def _group_by_source(
 _env = Environment(
     loader=FileSystemLoader(Path(__file__).parent / "templates"),
     autoescape=select_autoescape(["html"]),
+    # No template cache, deliberately. Jinja caches a compiled *module* on each
+    # Template object, and `{% from "_seed_block.html.j2" import seed_block %}`
+    # hands back that cached module. Since _seed_block.html.j2 itself rarely
+    # changes, its module kept closing over a stale copy of the cand_row macro:
+    # editing _cand_row.html.j2 alone had no effect on a running server, while
+    # _style.css (an {% include %}, re-read every render) updated normally. That
+    # produced pages with new styling wrapped around old markup — a genuinely
+    # confusing failure mode, since the page looked broken rather than stale.
+    # Recompiling costs ~10 ms per seed block against runs that spend ~30 s per
+    # seed on API calls, so it is not worth the trap.
+    cache_size=0,
 )
 
 
