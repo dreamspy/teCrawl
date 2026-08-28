@@ -4,6 +4,7 @@ let pendingClick = null;
 let activeYt = null;
 let QUEUE = null;        // {items: [{btn,row,artist,title}], idx} while playing all
 let silentKeeper = null; // near-silent looping <audio>, see startSilentKeeper()
+let NOW = null;          // {row,title,artist} playing on YouTube, queue or single row
 
 window.onSpotifyIframeApiReady = function (api) {
   SpotifyAPI = api;
@@ -29,6 +30,8 @@ function closeAllEmbeds() {
     if (otherBtn) otherBtn.textContent = '▶';
     e.remove();
   });
+  NOW = null;
+  updateTransport();
 }
 
 function toggleSeedList(btn) {
@@ -122,17 +125,44 @@ function queueItems() {
   return items;
 }
 
+// Play/pause/next/previous live in one place so the media keys and the
+// transport bar's buttons can't drift apart — and so the buttons are a way
+// to exercise the key handlers when the keys themselves are misbehaving.
+function ytPlaying() {
+  try {
+    return !!activeYt && !!activeYt.getPlayerState && activeYt.getPlayerState() === 1;
+  } catch (e) { return false; }
+}
+
+function playCurrent() {
+  if (activeYt) { try { activeYt.playVideo(); } catch (e) {} }
+  if (silentKeeper) silentKeeper.play().catch(function () {});
+  if ('mediaSession' in navigator) {
+    try { navigator.mediaSession.playbackState = 'playing'; } catch (e) {}
+  }
+  updateTransport();
+}
+
+function pauseCurrent() {
+  // The silent keeper deliberately keeps running: it's what holds the OS
+  // media session, so pausing it would hand the keys back to the iframe.
+  if (activeYt) { try { activeYt.pauseVideo(); } catch (e) {} }
+  if ('mediaSession' in navigator) {
+    try { navigator.mediaSession.playbackState = 'paused'; } catch (e) {}
+  }
+  updateTransport();
+}
+
+function toggleCurrent() {
+  if (ytPlaying()) pauseCurrent(); else playCurrent();
+}
+
 function setupMediaSession() {
   if (!('mediaSession' in navigator)) return;
   const ms = navigator.mediaSession;
   try {
-    ms.setActionHandler('play', function () {
-      if (activeYt) try { activeYt.playVideo(); ms.playbackState = 'playing'; } catch (e) {}
-      if (silentKeeper) silentKeeper.play().catch(function () {});
-    });
-    ms.setActionHandler('pause', function () {
-      if (activeYt) try { activeYt.pauseVideo(); ms.playbackState = 'paused'; } catch (e) {}
-    });
+    ms.setActionHandler('play', playCurrent);
+    ms.setActionHandler('pause', pauseCurrent);
     ms.setActionHandler('nexttrack', function () { if (QUEUE) queuePlay(QUEUE.idx + 1); });
     ms.setActionHandler('previoustrack', function () { if (QUEUE) queuePlay(QUEUE.idx - 1); });
   } catch (e) {}
@@ -146,7 +176,12 @@ function queuePlay(i) {
   const it = QUEUE.items[i];
   document.querySelectorAll('.playing').forEach(function (r) { r.classList.remove('playing'); });
   it.row.classList.add('playing');
-  try { it.row.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (e) {}
+  // Once you've scrolled away deliberately, stop yanking the page around on
+  // every advance — the transport bar keeps the playing track reachable, and
+  // its title is a click-to-jump back.
+  if (!userScrolled) {
+    try { it.row.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (e) {}
+  }
   closeAllEmbeds();
   togglePlayYT(it.btn, true);
   if ('mediaSession' in navigator) {
@@ -170,6 +205,161 @@ function queueStop() {
   }
   document.querySelectorAll('.playall').forEach(function (b) { b.textContent = '▶ Play all'; });
   document.querySelectorAll('.playall-mini').forEach(function (b) { b.textContent = '▶'; });
+}
+
+// --- Fixed transport bar (bottom of the viewport) ---
+// Whatever is playing on YouTube gets an always-visible strip: previous /
+// play-pause / next / stop, the track name, queue position, and a scrubbable
+// progress bar. Prev and next go through queuePlay(), the same entry point the
+// media keys use, so skipping never depends on the keys working. Built here
+// rather than in the page templates so the run page and the search page (whose
+// results arrive over SSE) share one copy.
+
+let BAR = null;
+let progressTimer = null;
+let userScrolled = false; // set by real user scrolling, see queuePlay()
+
+['wheel', 'touchmove'].forEach(function (ev) {
+  window.addEventListener(ev, function () { userScrolled = true; }, { passive: true });
+});
+window.addEventListener('keydown', function (e) {
+  // Typing in a feedback note isn't scrolling.
+  const tag = e.target && e.target.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+  const scrollKeys = ['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '];
+  if (scrollKeys.indexOf(e.key) !== -1) userScrolled = true;
+});
+
+function fmtTime(s) {
+  if (!isFinite(s) || s < 0) s = 0;
+  const m = Math.floor(s / 60);
+  const sec = Math.floor(s % 60);
+  return m + ':' + (sec < 10 ? '0' : '') + sec;
+}
+
+// Title/artist for a playing row, whichever kind of row it is.
+function rowMeta(row) {
+  const t = row && row.querySelector('.cand-title, .pick-title, .seed-title');
+  const a = row && row.querySelector('.cand-artist, .pick-artist, .seed-artist');
+  return {
+    title: (t ? t.textContent : '').trim(),
+    artist: (a ? a.textContent : '').trim(),
+  };
+}
+
+function ensureBar() {
+  if (BAR) return BAR;
+  const el = document.createElement('div');
+  el.className = 'transport';
+  el.hidden = true;
+  el.innerHTML =
+    '<div class="tp-rail" title="Seek"><div class="tp-fill"></div></div>' +
+    '<div class="tp-body">' +
+      '<div class="tp-controls">' +
+        '<button class="tp-btn tp-prev" title="Previous track">⏮</button>' +
+        '<button class="tp-btn tp-toggle" title="Play / pause">⏸</button>' +
+        '<button class="tp-btn tp-next" title="Next track">⏭</button>' +
+        '<button class="tp-btn tp-stop" title="Stop">⏹</button>' +
+      '</div>' +
+      '<button class="tp-track" title="Scroll to the playing row">' +
+        '<span class="tp-title"></span><span class="tp-artist"></span>' +
+      '</button>' +
+      '<span class="tp-pos"></span>' +
+      '<span class="tp-time">0:00 / 0:00</span>' +
+    '</div>';
+  document.body.appendChild(el);
+  BAR = {
+    el: el,
+    rail: el.querySelector('.tp-rail'),
+    fill: el.querySelector('.tp-fill'),
+    prev: el.querySelector('.tp-prev'),
+    toggle: el.querySelector('.tp-toggle'),
+    next: el.querySelector('.tp-next'),
+    stop: el.querySelector('.tp-stop'),
+    track: el.querySelector('.tp-track'),
+    title: el.querySelector('.tp-title'),
+    artist: el.querySelector('.tp-artist'),
+    pos: el.querySelector('.tp-pos'),
+    time: el.querySelector('.tp-time'),
+  };
+  BAR.prev.onclick = function () { if (QUEUE) queuePlay(QUEUE.idx - 1); };
+  BAR.next.onclick = function () { if (QUEUE) queuePlay(QUEUE.idx + 1); };
+  BAR.toggle.onclick = toggleCurrent;
+  BAR.stop.onclick = function () { if (QUEUE) queueStop(); else closeAllEmbeds(); };
+  BAR.track.onclick = function () {
+    if (!NOW) return;
+    userScrolled = false; // following along again
+    try { NOW.row.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (e) {}
+  };
+  BAR.rail.onclick = function (e) {
+    if (!activeYt || !activeYt.seekTo) return;
+    let dur = 0;
+    try { dur = activeYt.getDuration() || 0; } catch (err) {}
+    if (!dur) return;
+    const box = BAR.rail.getBoundingClientRect();
+    const pct = Math.min(1, Math.max(0, (e.clientX - box.left) / box.width));
+    try { activeYt.seekTo(pct * dur, true); } catch (err) {}
+    tickProgress();
+  };
+  return BAR;
+}
+
+function updateTransport() {
+  const bar = ensureBar();
+  if (!NOW) {
+    stopProgress();
+    bar.el.hidden = true;
+    document.body.classList.remove('with-transport');
+    return;
+  }
+  bar.el.hidden = false;
+  document.body.classList.add('with-transport');
+  bar.title.textContent = NOW.title || 'Playing';
+  bar.artist.textContent = NOW.artist || '';
+  const inQueue = !!QUEUE;
+  bar.prev.disabled = !inQueue;
+  bar.next.disabled = !inQueue;
+  bar.prev.title = inQueue ? 'Previous track' : 'Previous — only while a queue is playing';
+  bar.next.title = inQueue ? 'Next track' : 'Next — only while a queue is playing';
+  bar.stop.title = inQueue ? 'Stop the queue' : 'Stop';
+  bar.pos.textContent = inQueue ? (QUEUE.idx + 1) + ' / ' + QUEUE.items.length : '';
+  bar.toggle.textContent = ytPlaying() ? '⏸' : '▶';
+  // The plain-iframe fallback exposes no timing, so it degrades to controls.
+  bar.el.classList.toggle('no-progress', !!NOW.noProgress);
+}
+
+function startProgress() {
+  stopProgress();
+  progressTimer = setInterval(tickProgress, 500);
+  tickProgress();
+}
+
+function stopProgress() {
+  if (progressTimer) { clearInterval(progressTimer); progressTimer = null; }
+  if (BAR) {
+    BAR.fill.style.width = '0%';
+    BAR.time.textContent = '0:00 / 0:00';
+  }
+}
+
+function tickProgress() {
+  if (!BAR || !NOW || !activeYt) return;
+  let cur = 0, dur = 0;
+  try {
+    cur = activeYt.getCurrentTime() || 0;
+    dur = activeYt.getDuration() || 0;
+  } catch (e) { return; } // player mid-destroy
+  BAR.fill.style.width = dur ? Math.min(100, (cur / dur) * 100) + '%' : '0%';
+  BAR.time.textContent = fmtTime(cur) + ' / ' + fmtTime(dur);
+  BAR.toggle.textContent = ytPlaying() ? '⏸' : '▶';
+  // Gives the OS media UI a real scrubber too.
+  if ('mediaSession' in navigator && navigator.mediaSession.setPositionState && dur) {
+    try {
+      navigator.mediaSession.setPositionState({
+        duration: dur, position: Math.min(cur, dur), playbackRate: 1,
+      });
+    } catch (e) {}
+  }
 }
 
 // Rows belonging to the section a play-all button lives in — a group-head's
@@ -207,6 +397,7 @@ function toggleQueue(fromEl) {
     }
   }
   QUEUE = { items: items, idx: -1, originEl: origin };
+  userScrolled = false;
   startSilentKeeper();
   setupMediaSession();
   document.querySelectorAll('.playall').forEach(function (b) { b.textContent = '▶ Play all'; });
@@ -241,6 +432,8 @@ function togglePlayYT(btn, fromQueue) {
   wrap.appendChild(fallback);
   host.appendChild(wrap);
   btn.textContent = '⏸';
+  NOW = Object.assign({ row: host, noProgress: false }, rowMeta(host));
+  updateTransport();
 
   if (window.YT && YT.Player) {
     // IFrame API path: created inside the click gesture so autoplay is
@@ -254,8 +447,11 @@ function togglePlayYT(btn, fromQueue) {
       events: {
         onReady: function (e) {
           try { e.target.playVideo(); } catch (err) {}
+          startProgress();
+          updateTransport();
         },
         onStateChange: function (e) {
+          updateTransport();
           if (QUEUE && e.data === 0) queuePlay(QUEUE.idx + 1); // 0 = ended
         },
         onError: function (e) {
@@ -283,6 +479,8 @@ function togglePlayYT(btn, fromQueue) {
     iframe.allow = 'autoplay; encrypted-media';
     iframe.allowFullscreen = true;
     wrap.replaceChild(iframe, target);
+    if (NOW) NOW.noProgress = true;
+    updateTransport();
   }
 }
 

@@ -2,8 +2,6 @@
 
 ## v2 — high-leverage next steps
 
-- [ ] **Next / previous buttons for the play-all queue** (user request 2026-08-28): on-screen ⏮ / ⏭ controls so skipping doesn't depend on the media keys working. Today the only way to skip is a media key (`nexttrack` / `previoustrack` handlers in `_player.js`) or clicking another row's ▶, which stops the queue (`togglePlay` calls `queueStop` on a manual click). Wire the buttons straight to `queuePlay(QUEUE.idx ± 1)`, the same entry point the media-key handlers use. Open question: where they live. Next to the `▶ Play all` button is the obvious spot, but a small fixed transport bar that appears while a queue is running would also keep them reachable without scrolling back up, and could show the current track.
-
 - [ ] **Media keys are unreliable** (user report 2026-08-28): they work sometimes, then stop. Suspects, in rough order of likelihood:
   - The silent-keeper `<audio>` (`startSilentKeeper`) is what holds the OS media session; the YouTube iframe competes for it, and whichever element played most recently tends to win. If the keeper gets paused, garbage-collected, or its `play()` promise rejects (the `.catch(function () {})` swallows it silently), the keys go to the iframe and `nexttrack` / `previoustrack` get swallowed.
   - `queueStop` pauses the keeper, so keys are dead until the next Play-all click. Expected, but worth confirming that's what the user is hitting rather than a genuine dropout mid-queue.
@@ -92,6 +90,14 @@
 ---
 
 ## Archive
+
+### v2 — transport bar ✅ shipped 2026-08-28
+
+- [x] Fixed bar at the bottom of the viewport whenever something is playing on YouTube: ⏮ / ⏯ / ⏭ / ⏹, artist + title, queue position, elapsed / duration, and a click-to-seek progress rail. ⏮ / ⏭ call `queuePlay(QUEUE.idx ± 1)`, the same entry point the media keys use, so skipping no longer depends on the keys working
+- [x] Play/pause and the media-key handlers share `playCurrent` / `pauseCurrent` / `ytPlaying`, so the buttons and the keys can't drift apart (and the buttons are a way to exercise the key path when the keys misbehave)
+- [x] Shows for single-row plays too, with ⏮ / ⏭ disabled since there's no queue. Built in JS (`ensureBar`) rather than in the page templates, so the run page and the search page share one copy
+- [x] Progress polls `getCurrentTime` / `getDuration` every 500 ms and feeds `mediaSession.setPositionState`, so the OS media hub gets a real scrubber too; the plain-iframe fallback (no IFrame API) exposes no timing and degrades to controls only
+- [x] Queue auto-scroll now yields: it stops following once you scroll away deliberately, and the bar's track name is a click-to-jump back to the playing row
 
 ### v2 — media-key play queue ✅ shipped 2026-07-17
 

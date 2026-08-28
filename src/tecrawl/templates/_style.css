@@ -456,3 +456,92 @@ a.secondary { color: #888; }
 .coverage a { font-size: inherit; }
 .coverage .cov-missing { opacity: .8; }
 
+/* --- Fixed transport bar ---
+   Always-visible controls for whatever is playing, so skipping doesn't depend
+   on the media keys and the playing track stays identifiable wherever you've
+   scrolled to. Injected by _player.js (ensureBar), not by the templates. */
+.transport {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 50;
+  background: var(--card);
+  border-top: 1px solid var(--border);
+  box-shadow: 0 -6px 18px rgba(0, 0, 0, .45);
+}
+/* Clears the last row from under the bar; toggled with the bar itself. */
+body.with-transport { padding-bottom: 5.5rem; }
+.tp-rail {
+  height: 4px;
+  background: var(--border);
+  cursor: pointer;
+}
+.tp-fill {
+  height: 100%;
+  width: 0;
+  background: var(--accent);
+  transition: width .25s linear;
+}
+/* Plain-iframe fallback: no timing available, so controls only. */
+.transport.no-progress .tp-rail,
+.transport.no-progress .tp-time { display: none; }
+.tp-body {
+  max-width: 920px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  padding: .55rem 1rem;
+}
+.tp-controls { display: flex; gap: .3rem; flex: none; }
+.tp-btn {
+  background: transparent;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  min-width: 34px;
+  height: 30px;
+  font-size: .85rem;
+  cursor: pointer;
+  font-family: inherit;
+}
+.tp-btn:hover:not(:disabled) { background: var(--accent); color: #000; }
+.tp-btn:disabled { color: #4a4a4a; border-color: #333; cursor: default; }
+/* min-width: 0 so a long title truncates instead of shoving the times off. */
+.tp-track {
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: 0;
+  padding: 0;
+  text-align: left;
+  color: var(--text);
+  font-family: inherit;
+  font-size: .85rem;
+  line-height: 1.25;
+  cursor: pointer;
+  overflow: hidden;
+}
+.tp-track:hover .tp-title { color: var(--accent); }
+.tp-title, .tp-artist {
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tp-title { font-weight: 600; }
+.tp-artist { color: var(--muted); font-size: .78rem; }
+.tp-pos, .tp-time {
+  color: var(--muted);
+  font-size: .75rem;
+  white-space: nowrap;
+  flex: none;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 600px) {
+  .tp-body { gap: .5rem; padding: .5rem .6rem; }
+  .tp-pos { display: none; }
+  .tp-btn { min-width: 30px; }
+}
