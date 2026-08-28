@@ -2,8 +2,6 @@
 
 ## v2 — high-leverage next steps
 
-- [ ] **Discogs Recommendations angle silently dead — Playwright/Chromium build mismatch** (2026-08-28): the installed Chromium build under `~/Library/Caches/ms-playwright/` is `chromium_headless_shell-1234`, but the installed `playwright` package (1.61.0) still expects `1228` and refuses to launch. Confirmed live: `discogs_scrape.recommendations()` raises `ScrapeUnavailable("Playwright's Chromium isn't installed — run: playwright install chromium")`. Fails clean (that message is exactly what `discover.py`'s `except discogs_scrape.ScrapeUnavailable` warns with, see the `⚠` line in the dig log), so nothing is broken — the sixth discovery angle (shipped 2026-07-17, "Recommended on Discogs") is just silently missing until this is fixed. One-command fix: `playwright install chromium`. Unrelated to any in-progress feature; flagged because it's cheap to fix and easy to forget.
-
 - [ ] **Spotify ▶ always grayed out, even on tracks that exist on Spotify** (user report 2026-08-28): checked live — `.env` has `SPOTIFY_CLIENT_ID`/`SPOTIFY_CLIENT_SECRET` set, but the token request fails with "Spotify app credentials rejected" (`spotify._get_token()`). So every candidate resolves with `spotify_id=None` regardless of whether the track is actually on Spotify, and `_cand_row.html.j2` / `_seed_block.html.j2` / `_top_picks.html.j2` all render `class="play disabled"` off that. This is the same root cause as "The leading ▶ on each row is dead" below — not a separate resolution bug, the resolver never successfully searches Spotify at all right now. Fixing the credentials (see "Create a new Spotify app and test the resolver fix" further down) should make this report and that one both go away; if the button is *still* grayed out on a findable track after fresh credentials are in place, that would point to a genuine matching bug in `resolve_to_spotify` / `spotify.search_track` / `search_album` worth revisiting on its own.
 
 - [ ] **Media keys are unreliable** (user report 2026-08-28): they work sometimes, then stop. Suspects, in rough order of likelihood:
@@ -104,6 +102,23 @@
 
 - [x] ▶ Play all on run pages + search results: every rec with a YouTube match plays in page order (★ Top picks first, deduped); playing row highlights + scrolls into view; auto-advance on end; dead embeds skipped; manual ▶ click stops the queue
 - [x] Media Session API wiring: keyboard media keys (play/pause/next/previous) drive the queue with the tab in the background; near-silent audio loop keeps the page registered as the OS player so the YouTube iframe doesn't swallow next/previous (confirmed working by user)
+
+### v2 — Discogs Recommendations revived ✅ fixed 2026-08-28
+
+The angle had been returning nothing. The filed cause was real but was masking a
+second, larger one; both are fixed and the angle is verified live (Jeff Mills —
+The Bells now yields 10 `discogs_recommendation` candidates, no warnings).
+
+- [x] **Playwright/Chromium revision mismatch** — 1.61.0 pins Chromium `1228`, the cache only had `1234` (left by an unrelated Node `playwright-core`). `playwright install chromium` fixed it. `playwright` is now pinned `>=1.61,<1.62` in `pyproject.toml`: the browser revision is pinned per Playwright minor, so an unbounded `>=` lets a routine `pip install -U` silently re-open exactly this hole
+- [x] **Cloudflare was refusing the scraper outright** — invisible until the browser could launch again. Three independent causes, each A/B'd against discogs.com:
+  - Playwright's default headless is the `chromium_headless_shell` build, which **never** passes the challenge (45 s of waiting still shows "Just a moment…"). Now launches `channel="chromium"` — the full Chrome build in new-headless mode
+  - The hardcoded `Chrome/124` UA contradicted the browser's real version (149), which still goes out in the `Sec-CH-UA` client hints; the default UA advertises `HeadlessChrome` outright. Now derived from the browser at runtime with only "Headless" stripped, so UA and client hints agree and it stays correct across Chromium upgrades
+  - **`page.route("**/*")` interception is itself a bot signal** — the decisive one. Same browser, same UA, routing off clears in ~5 s; routing on never clears. A/B'd three ways: no routing passed, host-only failed, host+resource-type failed. The ad/tracker blocking is deleted with a comment saying not to reintroduce it (its stated purpose, letting `networkidle` fire, was already moot — the code navigates `wait_until="commit"`)
+- [x] **A challenge no longer masquerades as "no recommendations"** — it raises `ScrapeUnavailable` instead of returning `[]`. Previously an interstitial was indistinguishable from a rec-less release and got cached as an empty for 6 h, poisoning that release
+- [x] **`cf_clearance` persisted** to `.cache/discogs_cf_state.json` and reused, so a run rides on one challenge pass instead of re-solving per release — re-solving back-to-back is what gets an IP clamped down on. Measured: 30 s+ and frequently blocked without it, ~2 s per release with it
+- [x] **Circuit breaker** mirroring `spotify.py` — 2 consecutive blocks parks the scraper for 10 min, so a genuinely blocked run doesn't burn ~14 min of a 25-seed dig waiting out challenges
+- [x] **Parser fixes** found during verification: `aria-label` HTML entities are now unescaped (`H&amp;M` was reaching search as literal `H&amp;M`), and a cache hit and a fresh scrape now return the same shape (tuples; the fresh path returned lists)
+- Note for future debugging: the release page embeds its GraphQL state in `#dsdata`, including `recommendations({"first":10})` with a `totalCount`. That's how "this release has no recommendations" was positively confirmed rather than inferred — most releases legitimately have none (4 of 6 sampled), so an empty result is not evidence of breakage. Parsing that JSON instead of the DOM would be more robust than the `aria-label` regex and would remove the hydration wait entirely; not done, but it's the obvious next move if the carousel markup ever shifts
 
 ### v2 — Discogs recommendations scraping ✅ shipped 2026-07-17
 
