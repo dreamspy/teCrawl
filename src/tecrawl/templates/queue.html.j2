@@ -56,7 +56,7 @@
 }
 @media (max-width: 600px) {
   /* LFM/DGS are hidden by the base responsive rules and .when by the one
-     below, leaving play · info · Spotify · YT · Dig · × — six cells. */
+     below, leaving play · info · SPT · YT · Dig · × — six cells. */
   .cand { grid-template-columns: auto 1fr auto auto auto auto; }
   .when { display: none; }
 }
@@ -89,9 +89,9 @@
     {% set why = ('from ' ~ e.seed) if e.seed else (e.source_detail or '') %}
     <span class="detail" title="{{ why }}">{{ why }}</span>
     {% if e.spotify_id %}
-      <a href="https://open.spotify.com/{{ e.spotify_type or 'track' }}/{{ e.spotify_id }}" target="_blank" rel="noopener">Spotify</a>
+      <a href="https://open.spotify.com/{{ e.spotify_type or 'track' }}/{{ e.spotify_id }}" target="_blank" rel="noopener" class="ext spt" title="Open {{ e.spotify_type or 'track' }} on Spotify">SPT↗</a>
     {% else %}
-      <a href="{{ spotify_search_url(e.artist, e.title) }}" target="_blank" rel="noopener" class="secondary">Search</a>
+      <a href="{{ spotify_search_url(e.artist, e.title) }}" target="_blank" rel="noopener" class="ext spt secondary" title="No Spotify match — search Spotify for this track">SPT↗</a>
     {% endif %}
     <span class="yt-cell">
       {% if e.youtube_id %}

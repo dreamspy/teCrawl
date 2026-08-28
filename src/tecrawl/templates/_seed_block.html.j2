@@ -17,11 +17,18 @@
     </span>
     <div class="seed-info">
       <div class="seed-title">
-        {% if seed.spotify_id %}<a href="https://open.spotify.com/track/{{ seed.spotify_id }}" target="_blank" rel="noopener">{{ seed.title }}</a>{% else %}{{ seed.title }}{% endif %}
+        {% if seed.spotify_id %}<a href="{{ spotify_track_url(seed.spotify_id) }}" target="_blank" rel="noopener">{{ seed.title }}</a>{% else %}{{ seed.title }}{% endif %}
       </div>
       <div class="seed-artist">{{ seed.artist }}</div>
     </div>
     <span class="seed-actions">
+      {# A seed is always a track, and spotify.Track carries only the bare id,
+         so there is no spotify_url to branch on the way a Candidate has. #}
+      {% if seed.spotify_id %}
+        <a href="{{ spotify_track_url(seed.spotify_id) }}" target="_blank" rel="noopener" class="ext spt" title="Open track on Spotify">SPT↗</a>
+      {% else %}
+        <a href="{{ spotify_search_url(seed.artist, seed.title) }}" target="_blank" rel="noopener" class="ext spt secondary" title="No Spotify match — search Spotify for this track">SPT↗</a>
+      {% endif %}
       <a href="{{ lastfm_url(seed.artist, seed.title) }}" target="_blank" rel="noopener" class="ext lfm" title="Browse on Last.fm">LFM↗</a>
       {% if release and release.exact and release.release_id %}
         <a href="https://www.discogs.com/release/{{ release.release_id }}" target="_blank" rel="noopener" class="ext dgs" title="Open release on Discogs">DGS↗</a>

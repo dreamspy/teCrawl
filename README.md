@@ -154,7 +154,7 @@ Bookmark either URL on the phone. After each `tecrawl <csv>` run, pull to refres
 Each row has:
 - **▶ green** play button (Spotify inline preview, when the candidate exists on Spotify)
 - **▶ red** play button (YouTube inline embed — works for nearly everything)
-- **Spotify** / **Search** link (deep link to Spotify or a search if not resolved)
+- **SPT↗ / YT↗ / LFM↗ / DGS↗ / Dig↗** — the external destinations, in that order. `SPT↗` is a direct Spotify link when the track resolved and an artist+title Spotify search when it didn't; the label stays the same either way and the unresolved one is dimmed grey, so the row never reflows. `Dig↗` starts a fresh search seeded on that track (⌘/Ctrl-click for a new tab).
 - **why?** — expands a one-line explanation of exactly why this track surfaced (which discovery angle, from which of your seeds)
 - **👍 / 👎** — record your verdict; click the same thumb again to undo. After a thumb, an optional note field opens (quick-tap chips like "totally irrelevant" / "more like this", or free text) — your own reason is the highest-signal data for tuning the algorithm later
 - **copy** — puts `Artist - Title` on your clipboard, for pasting into a store, a tracker, or a search

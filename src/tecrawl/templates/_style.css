@@ -140,8 +140,19 @@ h1 { margin: 0 0 .5rem; font-size: 1.4rem; font-weight: 600; }
 .ext.lfm:hover { background: #d4444020; color: #d44; text-decoration: none; }
 .ext.dgs { color: #d4a651; border-color: #d4a65140; }
 .ext.dgs:hover { background: #d4a65120; color: #d4a651; text-decoration: none; }
-.ext.dig { color: var(--accent); border-color: #1db95440; }
-.ext.dig:hover { background: #1db95420; color: var(--accent); text-decoration: none; }
+.ext.spt { color: var(--accent); border-color: #1db95440; }
+.ext.spt:hover { background: #1db95420; color: var(--accent); text-decoration: none; }
+/* Unresolved: same chip, same SPT↗ label, dimmed. The difference between a
+   direct link and a search is the treatment, not the text, so the strip never
+   reflows between the two states. Needs all three classes: the generic
+   `a.secondary` (0,1,1) loses to `.ext.spt` (0,2,0) and would not dim it. */
+.ext.spt.secondary { color: #888; border-color: #88888840; }
+.ext.spt.secondary:hover { background: #88888820; color: #aaa; text-decoration: none; }
+/* Dig is teCrawl's own action, not an external service, so it gives the
+   Spotify green back to the Spotify chip rather than sitting beside it in an
+   indistinguishable second green. */
+.ext.dig { color: #b46ad4; border-color: #b46ad440; }
+.ext.dig:hover { background: #b46ad420; color: #b46ad4; text-decoration: none; }
 .embed {
   grid-column: 1 / -1;
   margin-top: .5rem;

@@ -22,9 +22,9 @@
         <button class="play disabled" disabled title="Not on Spotify">▶</button>
       {% endif %}
       {% if c.spotify_url %}
-        <a href="{{ c.spotify_url }}" target="_blank" rel="noopener">Spotify</a>
+        <a href="{{ c.spotify_url }}" target="_blank" rel="noopener" class="ext spt" title="Open {{ c.spotify_type or 'track' }} on Spotify">SPT↗</a>
       {% else %}
-        <a href="{{ spotify_search_url(c.artist, c.title) }}" target="_blank" rel="noopener" class="secondary">Search</a>
+        <a href="{{ spotify_search_url(c.artist, c.title) }}" target="_blank" rel="noopener" class="ext spt secondary" title="No Spotify match — search Spotify for this track">SPT↗</a>
       {% endif %}
       <span class="yt-cell">
         {% if c.youtube_id %}

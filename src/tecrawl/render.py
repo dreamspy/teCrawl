@@ -60,6 +60,13 @@ def spotify_search_url(artist: str, title: str) -> str:
     return f"https://open.spotify.com/search/{q}"
 
 
+def spotify_track_url(spotify_id: str) -> str:
+    """Seeds are always tracks and carry only a bare id (spotify.Track has no
+    spotify_url the way Candidate does), so the seed block builds the URL from
+    the id. Here rather than inline in the template so it's built once."""
+    return f"https://open.spotify.com/track/{spotify_id}"
+
+
 def lastfm_url(artist: str, title: str) -> str:
     """Direct Last.fm track page if we know the title, otherwise the artist
     page. Last.fm's URL scheme uses the artist+track names directly."""
@@ -95,6 +102,7 @@ _env.globals.update(
     source_descriptions=discover.SOURCE_DESCRIPTIONS,
     youtube_search_url=youtube_search_url,
     spotify_search_url=spotify_search_url,
+    spotify_track_url=spotify_track_url,
     lastfm_url=lastfm_url,
     discogs_search_url=discogs_search_url,
     dig_url=dig_url,
