@@ -48,15 +48,35 @@ h1 { margin: 0 0 .5rem; font-size: 1.4rem; font-weight: 600; }
 .seed-title a { color: var(--text); font-size: inherit; }
 .seed-title a:hover { color: var(--accent); text-decoration: none; }
 .seed-artist { color: var(--muted); font-size: 1.05rem; margin: .3rem 0 0; }
+/* Track on the left, every button on the right. Still a grid (not flex) so
+   the panels JS appends to a row — .embed, .why-panel, .fb-note — can span it
+   with `grid-column: 1 / -1`. */
 .cand {
   display: grid;
-  grid-template-columns: auto 1fr auto auto auto auto auto auto;
-  gap: .75rem;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: .5rem .75rem;
   align-items: center;
   padding: .7rem .75rem;
   border-radius: 6px;
   font-size: .9rem;
 }
+/* Destinations on top, teCrawl's own controls underneath, both hugging the
+   right edge so the two lines read as one block against the track title. */
+.actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: .35rem;
+  min-width: 0;
+}
+.act-row {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: .5rem;
+  flex-wrap: wrap;
+}
+
 .cand:nth-child(odd) { background: #1d1d1d; }
 .cand:hover { background: #242424; }
 .play {
@@ -166,7 +186,8 @@ h1 { margin: 0 0 .5rem; font-size: 1.4rem; font-weight: 600; }
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 200px;
+  max-width: 100%;
+  margin-top: .1rem;
 }
 a { color: var(--accent); text-decoration: none; font-size: .85rem; }
 a:hover { text-decoration: underline; }
@@ -248,8 +269,8 @@ a.secondary { color: #888; }
 }
 .pick {
   display: grid;
-  grid-template-columns: auto 1fr auto auto auto auto auto auto;
-  gap: .75rem;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: .5rem .75rem;
   align-items: center;
   padding: .7rem .75rem;
   border-radius: 6px;
@@ -343,6 +364,9 @@ a.secondary { color: #888; }
   gap: .25rem;
   align-items: center;
 }
+/* When .fb is one of the two action lines its buttons sit tighter than the
+   .act-row default, which is spaced for the wider destination links. */
+.fb.act-row { gap: .25rem; }
 .fb button {
   background: transparent;
   border: 1px solid var(--border);
@@ -457,9 +481,8 @@ a.secondary { color: #888; }
    rendering desktop-scaled and this block never fires there. */
 @media (max-width: 600px) {
   body { padding: 1rem .6rem; }
-  .cand { grid-template-columns: auto 1fr auto auto auto; }
-  .pick { grid-template-columns: auto 1fr auto auto auto auto; }
-  .detail, .pick-meta, .ext.lfm, .ext.dgs { display: none; }
+  /* The two-column layout holds at any width; the button lines just wrap. */
+  .pick-meta, .ext.lfm, .ext.dgs { display: none; }
   .seed-title { font-size: 1.3rem; }
   .seed-artist { font-size: .9rem; }
   .seed-head { gap: .6rem; padding: 1rem .75rem; }

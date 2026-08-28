@@ -1,47 +1,54 @@
 {# The "★ Top picks" cross-seed block. Included by the playlist page and
    injected standalone into the folder-search results, so both render
-   identically. Expects `top_picks` in context; renders nothing when empty. #}
+   identically. Expects `top_picks` in context; renders nothing when empty.
+   Same two-line action layout as _cand_row: track left, buttons right. #}
 {% if top_picks %}
 <div class="top-picks">
   <h2>★ Top picks <button class="playall-mini" onclick="toggleQueue(this)" title="Play this section, then continue into the rest of the page">▶</button></h2>
   <div class="sub">Surfaced from {{ top_picks|length }} candidate{% if top_picks|length != 1 %}s{% endif %} that appeared across multiple seed tracks — strong cross-signal.</div>
   {% for p in top_picks %}
   <div class="pick">
-    {% if p.spotify_id %}
-      <button class="play" data-spotify-id="{{ p.spotify_id }}" data-spotify-type="{{ p.spotify_type }}" onclick="togglePlay(this)" title="Play preview / full track">▶</button>
-    {% else %}
-      <button class="play disabled" disabled title="Not on Spotify">▶</button>
-    {% endif %}
     <div class="pick-info">
       <div class="pick-title">{{ p.title }}</div>
       <div class="pick-artist">{{ p.artist }}</div>
     </div>
-    <button class="hits-badge" onclick="toggleSeedList(this)" title="Show seeds that surfaced this">{{ p.hits }}× seeds</button>
-    {% if p.spotify_url %}
-      <a href="{{ p.spotify_url }}" target="_blank" rel="noopener">Spotify</a>
-    {% else %}
-      <a href="{{ spotify_search_url(p.artist, p.title) }}" target="_blank" rel="noopener" class="secondary">Search</a>
-    {% endif %}
-    <span class="yt-cell">
-      {% if p.youtube_id %}
-        <button class="play yt" data-yt-id="{{ p.youtube_id }}" onclick="togglePlayYT(this)" title="Play on YouTube">▶</button>
-      {% endif %}
-      <a href="{{ youtube_search_url(p.artist, p.title) }}" target="_blank" rel="noopener" class="yt-search" title="Search on YouTube (use if the auto-pick is wrong)">YT↗</a>
-    </span>
-    <a href="{{ lastfm_url(p.artist, p.title) }}" target="_blank" rel="noopener" class="ext lfm" title="Browse on Last.fm">LFM↗</a>
-    {% if p.discogs_release_id %}
-      <a href="https://www.discogs.com/release/{{ p.discogs_release_id }}" target="_blank" rel="noopener" class="ext dgs" title="Open release on Discogs">DGS↗</a>
-    {% else %}
-      <a href="{{ discogs_search_url(p.artist, p.title) }}" target="_blank" rel="noopener" class="ext dgs" title="Search on Discogs">DGS↗</a>
-    {% endif %}
-    <a href="{{ dig_url(p.artist, p.title) }}" class="ext dig" title="Dig from here — new search seeded on this track (⌘/Ctrl-click for a new tab)">Dig↗</a>
-    <span class="fb" data-artist="{{ p.artist }}" data-title="{{ p.title }}" data-source="{{ p.sources|join(',') }}" data-context="top_pick">
-      <button class="why" onclick="toggleWhy(this)" title="Why is this recommended?" data-why="Appeared from {{ p.hits }} of your seeds via: {% for s in p.sources %}{{ source_labels.get(s, s) }}{% if not loop.last %} + {% endif %}{% endfor %}. Open the {{ p.hits }}× seeds badge to audition the seeds that surfaced it.">why?</button>
-      <button class="fb-up" onclick="sendFeedback(this, 'up')" title="Good recommendation (saved to feedback.jsonl)">👍</button>
-      <button class="fb-down" onclick="sendFeedback(this, 'down')" title="Bad recommendation (saved to feedback.jsonl)">👎</button>
-      <button class="cp" onclick="copyTrack(this)" title="Copy &quot;Artist - Title&quot; to the clipboard">copy</button>
-      <button class="dl" onclick="toggleDownload(this)" title="Add to download queue">⬇ queue</button>
-    </span>
+    <div class="actions">
+      <div class="act-row">
+        {% if p.spotify_id %}
+          <button class="play" data-spotify-id="{{ p.spotify_id }}" data-spotify-type="{{ p.spotify_type }}" onclick="togglePlay(this)" title="Play preview / full track">▶</button>
+        {% else %}
+          <button class="play disabled" disabled title="Not on Spotify">▶</button>
+        {% endif %}
+        {% if p.spotify_url %}
+          <a href="{{ p.spotify_url }}" target="_blank" rel="noopener">Spotify</a>
+        {% else %}
+          <a href="{{ spotify_search_url(p.artist, p.title) }}" target="_blank" rel="noopener" class="secondary">Search</a>
+        {% endif %}
+        <span class="yt-cell">
+          {% if p.youtube_id %}
+            <button class="play yt" data-yt-id="{{ p.youtube_id }}" onclick="togglePlayYT(this)" title="Play on YouTube">▶</button>
+          {% endif %}
+          <a href="{{ youtube_search_url(p.artist, p.title) }}" target="_blank" rel="noopener" class="yt-search" title="Search on YouTube (use if the auto-pick is wrong)">YT↗</a>
+        </span>
+        <a href="{{ lastfm_url(p.artist, p.title) }}" target="_blank" rel="noopener" class="ext lfm" title="Browse on Last.fm">LFM↗</a>
+        {% if p.discogs_release_id %}
+          <a href="https://www.discogs.com/release/{{ p.discogs_release_id }}" target="_blank" rel="noopener" class="ext dgs" title="Open release on Discogs">DGS↗</a>
+        {% else %}
+          <a href="{{ discogs_search_url(p.artist, p.title) }}" target="_blank" rel="noopener" class="ext dgs" title="Search on Discogs">DGS↗</a>
+        {% endif %}
+        <a href="{{ dig_url(p.artist, p.title) }}" class="ext dig" title="Dig from here — new search seeded on this track (⌘/Ctrl-click for a new tab)">Dig↗</a>
+      </div>
+      <span class="fb act-row" data-artist="{{ p.artist }}" data-title="{{ p.title }}" data-source="{{ p.sources|join(',') }}" data-context="top_pick">
+        <button class="hits-badge" onclick="toggleSeedList(this)" title="Show seeds that surfaced this">{{ p.hits }}× seeds</button>
+        <button class="why" onclick="toggleWhy(this)" title="Why is this recommended?" data-why="Appeared from {{ p.hits }} of your seeds via: {% for s in p.sources %}{{ source_labels.get(s, s) }}{% if not loop.last %} + {% endif %}{% endfor %}. Open the {{ p.hits }}× seeds badge to audition the seeds that surfaced it.">why?</button>
+        <button class="fb-up" onclick="sendFeedback(this, 'up')" title="Good recommendation (saved to feedback.jsonl)">👍</button>
+        <button class="fb-down" onclick="sendFeedback(this, 'down')" title="Bad recommendation (saved to feedback.jsonl)">👎</button>
+        <button class="cp" onclick="copyTrack(this)" title="Copy &quot;Artist - Title&quot; to the clipboard">copy</button>
+        <button class="dl" onclick="toggleDownload(this)" title="Add to download queue">⬇ queue</button>
+      </span>
+    </div>
+    {# Direct child of .pick, not of .actions: toggleSeedList looks it up from
+       the pick and it spans the full row. #}
     <div class="seed-list" hidden>
       {% for s in p.seeds %}
       <div class="seed-row">

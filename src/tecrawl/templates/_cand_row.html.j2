@@ -1,44 +1,54 @@
 {# One candidate row. Shared by _seed_block (initial render) and the
    /api/more endpoint (appended "Show more" rows) so they stay identical.
-   `seed` only needs .artist/.title (dig links + feedback context). #}
+   `seed` only needs .artist/.title (dig links + feedback context).
+
+   Layout: track on the left, every button on the right in two lines —
+   destinations (play / Spotify / YouTube / Last.fm / Discogs / Dig) on top,
+   teCrawl's own controls (why? / 👍 / 👎 / copy / queue) underneath. The row
+   stays a 2-column grid because the panels appended to it by JS (.embed,
+   .why-panel, .fb-note) span it with `grid-column: 1 / -1`. #}
 {% macro cand_row(c, seed) %}
 <div class="cand">
-  {% if c.spotify_id %}
-    <button class="play" data-spotify-id="{{ c.spotify_id }}" data-spotify-type="{{ c.spotify_type }}" onclick="togglePlay(this)" title="Play preview / full track">▶</button>
-  {% else %}
-    <button class="play disabled" disabled title="Not on Spotify">▶</button>
-  {% endif %}
   <div class="cand-info">
     <div class="cand-title">{{ c.title }}</div>
     <div class="cand-artist">{{ c.artist }}</div>
+    {% if c.source_detail %}<div class="detail" title="{{ c.source_detail }}">{{ c.source_detail }}</div>{% endif %}
   </div>
-  <span class="detail" title="{{ c.source_detail }}">{{ c.source_detail }}</span>
-  {% if c.spotify_url %}
-    <a href="{{ c.spotify_url }}" target="_blank" rel="noopener">Spotify</a>
-  {% else %}
-    <a href="{{ spotify_search_url(c.artist, c.title) }}" target="_blank" rel="noopener" class="secondary">Search</a>
-  {% endif %}
-  <span class="yt-cell">
-    {% if c.youtube_id %}
-      <button class="play yt" data-yt-id="{{ c.youtube_id }}" onclick="togglePlayYT(this)" title="Play on YouTube">▶</button>
-    {% endif %}
-    <a href="{{ youtube_search_url(c.artist, c.title) }}" target="_blank" rel="noopener" class="yt-search" title="Search on YouTube (use if the auto-pick is wrong)">YT↗</a>
-  </span>
-  <a href="{{ lastfm_url(c.artist, c.title) }}" target="_blank" rel="noopener" class="ext lfm" title="Browse on Last.fm">LFM↗</a>
-  {% if c.discogs_release_id %}
-    <a href="https://www.discogs.com/release/{{ c.discogs_release_id }}" target="_blank" rel="noopener" class="ext dgs" title="Open release on Discogs">DGS↗</a>
-  {% else %}
-    <a href="{{ discogs_search_url(c.artist, c.title) }}" target="_blank" rel="noopener" class="ext dgs" title="Search on Discogs">DGS↗</a>
-  {% endif %}
-  <a href="{{ dig_url(c.artist, c.title) }}" class="ext dig" title="Dig from here — new search seeded on this track (⌘/Ctrl-click for a new tab)">Dig↗</a>
-  {# .fb carries both the 👍/👎 feedback actions and the ⬇ download queue —
-     they want the same per-row context, so they share one dataset. #}
-  <span class="fb" data-artist="{{ c.artist }}" data-title="{{ c.title }}" data-source="{{ c.source }}" data-detail="{{ c.source_detail }}" data-seed="{{ seed.artist }} — {{ seed.title }}" data-context="cand">
-    <button class="why" onclick="toggleWhy(this)" title="Why is this recommended?" data-why="{{ source_labels.get(c.source, c.source) }} · {{ source_descriptions.get(c.source, '') }} · {{ c.source_detail }} · from your seed: {{ seed.artist }} — {{ seed.title }}">why?</button>
-    <button class="fb-up" onclick="sendFeedback(this, 'up')" title="Good recommendation (saved to feedback.jsonl)">👍</button>
-    <button class="fb-down" onclick="sendFeedback(this, 'down')" title="Bad recommendation (saved to feedback.jsonl)">👎</button>
-    <button class="cp" onclick="copyTrack(this)" title="Copy &quot;Artist - Title&quot; to the clipboard">copy</button>
-    <button class="dl" onclick="toggleDownload(this)" title="Add to download queue">⬇ queue</button>
-  </span>
+  <div class="actions">
+    <div class="act-row">
+      {% if c.spotify_id %}
+        <button class="play" data-spotify-id="{{ c.spotify_id }}" data-spotify-type="{{ c.spotify_type }}" onclick="togglePlay(this)" title="Play preview / full track">▶</button>
+      {% else %}
+        <button class="play disabled" disabled title="Not on Spotify">▶</button>
+      {% endif %}
+      {% if c.spotify_url %}
+        <a href="{{ c.spotify_url }}" target="_blank" rel="noopener">Spotify</a>
+      {% else %}
+        <a href="{{ spotify_search_url(c.artist, c.title) }}" target="_blank" rel="noopener" class="secondary">Search</a>
+      {% endif %}
+      <span class="yt-cell">
+        {% if c.youtube_id %}
+          <button class="play yt" data-yt-id="{{ c.youtube_id }}" onclick="togglePlayYT(this)" title="Play on YouTube">▶</button>
+        {% endif %}
+        <a href="{{ youtube_search_url(c.artist, c.title) }}" target="_blank" rel="noopener" class="yt-search" title="Search on YouTube (use if the auto-pick is wrong)">YT↗</a>
+      </span>
+      <a href="{{ lastfm_url(c.artist, c.title) }}" target="_blank" rel="noopener" class="ext lfm" title="Browse on Last.fm">LFM↗</a>
+      {% if c.discogs_release_id %}
+        <a href="https://www.discogs.com/release/{{ c.discogs_release_id }}" target="_blank" rel="noopener" class="ext dgs" title="Open release on Discogs">DGS↗</a>
+      {% else %}
+        <a href="{{ discogs_search_url(c.artist, c.title) }}" target="_blank" rel="noopener" class="ext dgs" title="Search on Discogs">DGS↗</a>
+      {% endif %}
+      <a href="{{ dig_url(c.artist, c.title) }}" class="ext dig" title="Dig from here — new search seeded on this track (⌘/Ctrl-click for a new tab)">Dig↗</a>
+    </div>
+    {# .fb carries both the 👍/👎 feedback actions and the copy / ⬇ queue
+       buttons — they want the same per-row context, so they share one dataset. #}
+    <span class="fb act-row" data-artist="{{ c.artist }}" data-title="{{ c.title }}" data-source="{{ c.source }}" data-detail="{{ c.source_detail }}" data-seed="{{ seed.artist }} — {{ seed.title }}" data-context="cand">
+      <button class="why" onclick="toggleWhy(this)" title="Why is this recommended?" data-why="{{ source_labels.get(c.source, c.source) }} · {{ source_descriptions.get(c.source, '') }} · {{ c.source_detail }} · from your seed: {{ seed.artist }} — {{ seed.title }}">why?</button>
+      <button class="fb-up" onclick="sendFeedback(this, 'up')" title="Good recommendation (saved to feedback.jsonl)">👍</button>
+      <button class="fb-down" onclick="sendFeedback(this, 'down')" title="Bad recommendation (saved to feedback.jsonl)">👎</button>
+      <button class="cp" onclick="copyTrack(this)" title="Copy &quot;Artist - Title&quot; to the clipboard">copy</button>
+      <button class="dl" onclick="toggleDownload(this)" title="Add to download queue">⬇ queue</button>
+    </span>
+  </div>
 </div>
 {% endmacro %}
