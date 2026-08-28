@@ -4,6 +4,7 @@ search. Threaded so a long discovery run doesn't block page loads.
 Routing:
   /               → index: search box + list of playlists
   /search         → quick-search page (auto-runs when ?q= is present)
+  /queue          → the "grab this later" download queue
   /api/discover   → Server-Sent Events stream running one discovery
   /<slug>/        → newest run for that playlist
   /<slug>/<f>     → a specific run
@@ -21,7 +22,7 @@ import webbrowser
 from datetime import datetime
 from pathlib import Path
 
-from . import cache, config, discover, feedback, localfiles, quick, render
+from . import cache, config, discover, dlqueue, feedback, localfiles, quick, render
 
 # Run files are named <YYYYMMDD>-<HHMMSS>.html (see render.write_page). We parse
 # that back into a real timestamp for display and sorting; anything that doesn't
@@ -183,12 +184,18 @@ def serve(port: int = 8765, open_browser: bool = True, bind: str = "0.0.0.0") ->
                 return self._send_index()
             if path == "/search":
                 return self._send_search(parsed.query)
+            # Before the /<folder>/ fallback below, so an output folder that
+            # happens to be named "queue" can't shadow the queue page.
+            if path in ("/queue", "/queue/"):
+                return self._send_queue()
             if path == "/api/discover":
                 return self._api_discover(parsed.query)
             if path == "/api/pick-folder":
                 return self._api_pick_folder()
             if path == "/api/feedback":
                 return self._send_json(feedback.latest())
+            if path == "/api/queue":
+                return self._send_json({"keys": dlqueue.keys()})
             # /<folder> or /<folder>/ → list the runs in that folder
             parts = [p for p in path.strip("/").split("/") if p]
             if len(parts) == 1:
@@ -207,6 +214,8 @@ def serve(port: int = 8765, open_browser: bool = True, bind: str = "0.0.0.0") ->
             path = urllib.parse.unquote(parsed.path)
             if path == "/api/feedback":
                 return self._api_feedback_post()
+            if path == "/api/queue":
+                return self._api_queue_post()
             if path == "/api/more":
                 return self._api_more()
             self.send_error(404)
@@ -220,6 +229,22 @@ def serve(port: int = 8765, open_browser: bool = True, bind: str = "0.0.0.0") ->
                 self._send_json({"error": str(e)}, status=400)
                 return
             self._send_json({"ok": True, "verdict": stored["verdict"]})
+
+        def _api_queue_post(self) -> None:
+            try:
+                n = min(int(self.headers.get("Content-Length") or 0), 100_000)
+                body = json.loads(self.rfile.read(n).decode("utf-8")) if n else {}
+                stored = dlqueue.record(body)
+            except (ValueError, UnicodeDecodeError) as e:
+                self._send_json({"error": str(e)}, status=400)
+                return
+            # The count rides back so the page can update its badge without a
+            # second round trip.
+            self._send_json({
+                "ok": True,
+                "action": stored["action"],
+                "count": len(dlqueue.active()),
+            })
 
         def _api_more(self) -> None:
             """Extend one already-rendered section with the next batch of
@@ -316,6 +341,16 @@ def serve(port: int = 8765, open_browser: bool = True, bind: str = "0.0.0.0") ->
                 render.render_template(
                     "index.html.j2",
                     folders=folders,
+                    queue_count=len(dlqueue.active()),
+                    server_started=server_started,
+                )
+            )
+
+        def _send_queue(self) -> None:
+            self._send_html(
+                render.render_template(
+                    "queue.html.j2",
+                    entries=dlqueue.active(),
                     server_started=server_started,
                 )
             )

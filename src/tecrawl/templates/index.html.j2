@@ -37,6 +37,24 @@ a.row:hover { color: var(--accent); text-decoration: none; }
   white-space: nowrap;
 }
 .searchbar button.browse:hover { border-color: var(--accent); color: var(--accent); background: var(--card); }
+.queuelink {
+  display: inline-flex;
+  align-items: center;
+  gap: .45rem;
+  color: var(--muted);
+  font-size: .8rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: .35rem .6rem;
+}
+.queuelink:hover { border-color: #5aa9e6; color: #5aa9e6; text-decoration: none; }
+.queuelink .n {
+  background: #5aa9e620;
+  color: #5aa9e6;
+  border-radius: 8px;
+  padding: 0 .38rem;
+  font-size: .72rem;
+}
 .footer {
   margin-top: 3rem;
   padding-top: .75rem;
@@ -56,6 +74,7 @@ a.row:hover { color: var(--accent); text-decoration: none; }
   <button type="submit">Dig</button>
 </form>
 <div class="hint">Quick search: one track, or a local folder of audio files (<code>/Users/you/Music/crate</code>) · for Spotify playlists run <code>tecrawl &lt;csv&gt;</code></div>
+<a class="queuelink" href="/queue">⬇ Download queue<span class="n">{{ queue_count }}</span></a>
 <div class="section-title">Playlists</div>
 {% if folders %}
   {% for f in folders %}

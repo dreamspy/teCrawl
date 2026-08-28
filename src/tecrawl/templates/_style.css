@@ -358,6 +358,13 @@ a.secondary { color: #888; }
 .fb .why { font-size: .68rem; }
 .fb .fb-up.on { border-color: var(--accent); color: var(--accent); background: rgba(29,185,84,.12); }
 .fb .fb-down.on { border-color: #ff4c4c; color: #ff4c4c; background: rgba(255,76,76,.10); }
+/* The download queue button. Blue in BOTH states so it reads as its own
+   action rather than another neutral chip next to why?/👍/👎 — a bare grey
+   arrow there was invisible. Filled when the track is queued. */
+.fb .dl { border-color: #5aa9e660; color: #7fbdec; font-size: .68rem; }
+.fb .dl:hover { border-color: #5aa9e6; color: #5aa9e6; background: rgba(90,169,230,.10); }
+.fb .dl.on { border-color: #5aa9e6; color: #041018; background: #5aa9e6; font-weight: 600; }
+.fb .dl.on:hover { background: #7fbdec; color: #041018; }
 .why-panel {
   grid-column: 1 / -1;
   color: var(--muted);

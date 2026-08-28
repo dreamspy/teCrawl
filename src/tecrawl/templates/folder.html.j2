@@ -32,7 +32,7 @@ a.row:hover { color: var(--accent); text-decoration: none; }
 </head>
 <body>
 <div class="wrap">
-<div class="meta"><a href="/">← All playlists</a></div>
+<div class="meta"><a href="/">← All playlists</a> · <a href="/queue">⬇ Download queue</a></div>
 <h1>{{ folder }}</h1>
 <div class="meta">{{ runs | length }} run{{ '' if runs | length == 1 else 's' }} · newest first</div>
 {% for r in runs %}

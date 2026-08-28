@@ -489,20 +489,33 @@ function togglePlayYT(btn, fromQueue) {
 // from /api/feedback so even old archived pages show current verdicts. ---
 let FEEDBACK = null;
 
+// Matches feedback.key() / dlqueue.key() on the Python side, trim included,
+// so a value with stray whitespace maps to the same entry on both ends.
 function fbKey(artist, title) {
-  return (artist + '||' + title).toLowerCase();
+  return ((artist || '').trim() + '||' + (title || '').trim()).toLowerCase();
 }
 
 function paintFb(span) {
   const k = fbKey(span.dataset.artist, span.dataset.title);
   const v = FEEDBACK ? FEEDBACK[k] : undefined;
-  span.querySelector('.fb-up').classList.toggle('on', v === 'up');
-  span.querySelector('.fb-down').classList.toggle('on', v === 'down');
+  // Seed headers carry a .fb span with only the ⬇ in it — no thumbs to paint.
+  const up = span.querySelector('.fb-up');
+  const down = span.querySelector('.fb-down');
+  if (up) up.classList.toggle('on', v === 'up');
+  if (down) down.classList.toggle('on', v === 'down');
 }
 
 function applyFeedbackStates(root) {
   if (!FEEDBACK) return;
   (root || document).querySelectorAll('.fb').forEach(paintFb);
+}
+
+// One hook for every per-row state that has to be re-applied after rows are
+// injected (SSE seed blocks, "Show more" batches), so a new one doesn't mean
+// hunting down every call site again.
+function applyRowStates(root) {
+  applyFeedbackStates(root);
+  applyDlqStates(root);
 }
 
 fetch('/api/feedback')
@@ -618,6 +631,81 @@ function sendFeedback(btn, verdict) {
   });
 }
 
+// --- ⬇ download queue: "grab this later" per row. Appends to
+// download_queue.jsonl via /api/queue and is listed at /queue. Named DLQ
+// throughout because QUEUE / toggleQueue / queuePlay / queueStop already
+// belong to the play-all queue above. ---
+let DLQ = null; // Set of fbKey()s currently queued
+
+function paintDlq(span) {
+  const btn = span.querySelector('.dl');
+  if (!btn) return;
+  const on = DLQ ? DLQ.has(fbKey(span.dataset.artist, span.dataset.title)) : false;
+  btn.classList.toggle('on', on);
+  btn.title = on
+    ? 'In download queue — click to remove'
+    : 'Add to download queue';
+}
+
+function applyDlqStates(root) {
+  if (!DLQ) return;
+  (root || document).querySelectorAll('.fb').forEach(paintDlq);
+}
+
+fetch('/api/queue')
+  .then(function (r) { return r.json(); })
+  .then(function (d) { DLQ = new Set((d && d.keys) || []); applyDlqStates(); })
+  .catch(function () { DLQ = new Set(); });
+
+// The media ids aren't in the .fb dataset, so read them off the row's own
+// play buttons — that way /queue can play an entry back without re-resolving
+// anything, and rows that never resolved just send nothing.
+function dlqPayload(span, action) {
+  const d = span.dataset;
+  const row = span.closest('.cand, .pick, .seed-head');
+  const yt = row && row.querySelector('.play.yt');
+  const sp = row && row.querySelector('.play[data-spotify-id]');
+  const p = {
+    action: action,
+    artist: d.artist,
+    title: d.title,
+    source: d.source || '',
+    source_detail: d.detail || '',
+    seed: d.seed || '',
+    context: d.context || '',
+    page: location.pathname,
+  };
+  if (yt && yt.dataset.ytId) p.youtube_id = yt.dataset.ytId;
+  if (sp && sp.dataset.spotifyId) {
+    p.spotify_id = sp.dataset.spotifyId;
+    p.spotify_type = sp.dataset.spotifyType || 'track';
+  }
+  return p;
+}
+
+function toggleDownload(btn) {
+  const span = btn.closest('.fb');
+  const k = fbKey(span.dataset.artist, span.dataset.title);
+  if (!DLQ) DLQ = new Set();
+  const action = DLQ.has(k) ? 'remove' : 'add';
+  fetch('/api/queue', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(dlqPayload(span, action)),
+  }).then(function (r) {
+    if (!r.ok) throw new Error('bad status');
+    return r.json();
+  }).then(function (d) {
+    if (d.error) throw new Error(d.error);
+    if (action === 'add') DLQ.add(k); else DLQ.delete(k);
+    // Every copy of this track on the page (a top pick and its candidate row
+    // are the same track) should flip together, not just the one clicked.
+    applyDlqStates();
+  }).catch(function () {
+    alert('Saving to the download queue failed — is the tecrawl server running?');
+  });
+}
+
 function toggleWhy(btn) {
   const row = btn.closest('.cand, .pick');
   const existing = row.querySelector('.why-panel');
@@ -672,7 +760,7 @@ function showMore(btn) {
     if (d.error) throw new Error(d.error);
     if (d.rows) {
       group.insertAdjacentHTML('beforeend', d.rows);
-      applyFeedbackStates(group);
+      applyRowStates(group);
     }
     btn.dataset.page = String(d.next_page || (parseInt(btn.dataset.page || '1', 10) + 1));
     delete btn.dataset.loading;

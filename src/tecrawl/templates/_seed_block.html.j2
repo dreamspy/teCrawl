@@ -29,6 +29,12 @@
         <a href="{{ discogs_search_url(seed.artist, seed.title) }}" target="_blank" rel="noopener" class="ext dgs" title="Search on Discogs">DGS↗</a>
       {% endif %}
       <a href="{{ dig_url(seed.artist, seed.title) }}" class="ext dig" title="Dig from here — new search seeded on this track (⌘/Ctrl-click for a new tab)">Dig↗</a>
+      {# ⬇ only — no thumbs on a seed, since a seed is an input, not a
+         recommendation to judge. Worth having on a quick search, where the
+         seed is a track you pasted and may well want to grab. #}
+      <span class="fb" data-artist="{{ seed.artist }}" data-title="{{ seed.title }}" data-context="seed">
+        <button class="dl" onclick="toggleDownload(this)" title="Add to download queue">⬇ queue</button>
+      </span>
     </span>
   </div>
   {# Angles that produced nothing are invisible otherwise — a seed whose

@@ -23,6 +23,9 @@ output/
 # Personal 👍/👎 feedback log (taste data, stays local)
 feedback.jsonl
 
+# Personal "grab this later" download queue (stays local)
+download_queue.jsonl
+
 # Build artifacts
 build/
 dist/

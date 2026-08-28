@@ -39,6 +39,7 @@
       <button class="why" onclick="toggleWhy(this)" title="Why is this recommended?" data-why="Appeared from {{ p.hits }} of your seeds via: {% for s in p.sources %}{{ source_labels.get(s, s) }}{% if not loop.last %} + {% endif %}{% endfor %}. Open the {{ p.hits }}× seeds badge to audition the seeds that surfaced it.">why?</button>
       <button class="fb-up" onclick="sendFeedback(this, 'up')" title="Good recommendation (saved to feedback.jsonl)">👍</button>
       <button class="fb-down" onclick="sendFeedback(this, 'down')" title="Bad recommendation (saved to feedback.jsonl)">👎</button>
+      <button class="dl" onclick="toggleDownload(this)" title="Add to download queue">⬇ queue</button>
     </span>
     <div class="seed-list" hidden>
       {% for s in p.seeds %}

@@ -134,6 +134,7 @@ Routing:
 
 - `/` — index page: quick-search box plus every playlist you've run.
 - `/search` — interactive quick search (single track/link in, recommendations out).
+- `/queue` — your ⬇ download queue: everything you've marked "grab this later".
 - `/<playlist-slug>/` — opens the most recent run for that playlist. Refresh after each new `tecrawl` call to see the updated page.
 - `/<playlist-slug>/<timestamp>.html` — a specific historical run.
 
@@ -156,6 +157,7 @@ Each row has:
 - **Spotify** / **Search** link (deep link to Spotify or a search if not resolved)
 - **why?** — expands a one-line explanation of exactly why this track surfaced (which discovery angle, from which of your seeds)
 - **👍 / 👎** — record your verdict; click the same thumb again to undo. After a thumb, an optional note field opens (quick-tap chips like "totally irrelevant" / "more like this", or free text) — your own reason is the highest-signal data for tuning the algorithm later
+- **⬇** — add to the download queue (see below); click again to remove
 
 The **★ Top picks** section at the top shows candidates that surfaced from 3+ of your seed tracks — strong cross-signal.
 
@@ -168,6 +170,14 @@ Implementation note: a near-silent looping audio element keeps the *page* regist
 ### Feedback (record-only for now)
 
 Every 👍/👎 appends one line to `feedback.jsonl` at the repo root (gitignored — personal taste data): track, verdict, discovery angle, originating seed, page, timestamp. Verdicts survive reloads and show up on every page, including old archived runs (state is applied from the server, so pages generated before a verdict still display it). **Deliberately no ranking effects yet**: the plan is to collect real data first, then design downranking/filtering on evidence. Requires viewing through `tecrawl serve` (the buttons talk to the local server).
+
+### ⬇ Download queue
+
+Hitting **⬇** on any row (candidate, ★ top pick, or the seed header) marks it "grab this later" without interrupting what you're listening to. Click it again to take it back out.
+
+Everything queued is listed at **`/queue`**, linked from the top of every page and with a count on the index. That page shows each track with the seed you were digging when you queued it, the usual YT / Last.fm / Discogs / Dig links, a working YouTube player and ▶ Play all, a **×** to remove an entry by hand, and a **copy** button on each row for that one `Artist - Title`, and a **Copy list** button that puts every queued track on your clipboard one per line — paste either into a store search, a tracker, or wherever you actually acquire music.
+
+Storage is `download_queue.jsonl` at the repo root (gitignored, same as `feedback.jsonl`): append-only, so the full history of what you queued and un-queued is preserved even though `/queue` only shows what's currently waiting. **Not a Spotify playlist** — that would need OAuth this project doesn't have and would only ever hold candidates that resolved to Spotify, missing every YouTube-only find. Requires viewing through `tecrawl serve` (the button talks to the local server).
 
 ### Re-running
 

@@ -62,7 +62,7 @@
 </head>
 <body>
 <div class="wrap">
-<div class="meta"><a href="/">← All playlists</a></div>
+<div class="meta"><a href="/">← All playlists</a> · <a href="/queue">⬇ Download queue</a></div>
 <h1>teCrawl — quick search</h1>
 <form class="searchbar" id="f">
   <input id="q" name="q" placeholder="Track name, Spotify/YouTube link, or folder path" autocomplete="off" autofocus value="{{ q or '' }}">
@@ -173,17 +173,17 @@
         notes.appendChild(div);
       } else if (d.type === 'seed_html') {
         results.insertAdjacentHTML('beforeend', d.html);
-        applyFeedbackStates(results);
+        applyRowStates(results);
       } else if (d.type === 'result') {
         results.innerHTML = d.html;
-        applyFeedbackStates(results);
+        applyRowStates(results);
         seedline.hidden = true;
         queuebar.hidden = false;
         if (d.permalink) { permalink.href = d.permalink; permalink.hidden = false; }
         stop('Done in ' + d.elapsed + 's · ' + d.candidates + ' candidates', false);
       } else if (d.type === 'done') {
         if (d.tops_html) results.insertAdjacentHTML('afterbegin', d.tops_html);
-        applyFeedbackStates(results);
+        applyRowStates(results);
         queuebar.hidden = false;
         if (d.permalink) { permalink.href = d.permalink; permalink.hidden = false; }
         stop('Done in ' + d.elapsed + 's · ' + d.seeds + ' seeds · '

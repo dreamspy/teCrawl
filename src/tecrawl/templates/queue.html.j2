@@ -1,0 +1,230 @@
+{# The ⬇ download queue: everything marked "grab this later", newest last.
+   Rows are deliberately `.cand` with the same internals as _cand_row, so they
+   inherit the row grid from _style.css and _player.js's YouTube playback,
+   queueItems() and transport bar all work here with no extra code. #}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>teCrawl — download queue</title>
+<style>
+{% include "_style.css" %}
+/* Two more columns than a run page's rows: the added date and the × live at
+   the end where the why?/👍/👎 cluster sits over there. */
+.cand { grid-template-columns: auto 1fr auto auto auto auto auto auto auto auto; }
+.when { color: #555; font-size: .72rem; white-space: nowrap; }
+.rm {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  border-radius: 3px;
+  padding: .14rem .4rem;
+  cursor: pointer;
+  font-size: .8rem;
+  font-family: inherit;
+  line-height: 1;
+}
+.rm:hover { border-color: #ff4c4c; color: #ff4c4c; }
+.rowacts { display: inline-flex; gap: .3rem; align-items: center; }
+.cp {
+  background: transparent;
+  border: 1px solid #5aa9e660;
+  color: #7fbdec;
+  border-radius: 3px;
+  padding: .14rem .4rem;
+  cursor: pointer;
+  font-size: .7rem;
+  font-family: inherit;
+  line-height: 1;
+  white-space: nowrap;
+}
+.cp:hover { border-color: #5aa9e6; color: #5aa9e6; background: rgba(90,169,230,.10); }
+.cp.done { border-color: var(--accent); color: var(--accent); background: rgba(29,185,84,.12); }
+.copybar {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.25rem;
+}
+.copybar button {
+  background: transparent;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  border-radius: 4px;
+  padding: .45rem .8rem;
+  cursor: pointer;
+  font-size: .85rem;
+  font-family: inherit;
+}
+.copybar button:hover { background: var(--accent); color: #000; }
+.copybar .copyhint { color: var(--muted); font-size: .75rem; }
+.none { color: var(--muted); padding: 1.5rem 0; font-size: .9rem; }
+.footer {
+  margin-top: 3rem;
+  padding-top: .75rem;
+  border-top: 1px solid var(--border);
+  color: #555;
+  font-size: .72rem;
+}
+@media (max-width: 600px) {
+  /* LFM/DGS are hidden by the base responsive rules and .when by the one
+     below, leaving play · info · Spotify · YT · Dig · × — six cells. */
+  .cand { grid-template-columns: auto 1fr auto auto auto auto; }
+  .when { display: none; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+<div class="meta"><a href="/">← All playlists</a></div>
+<h1>⬇ Download queue</h1>
+<div class="meta"><span id="count">{{ entries|length }}</span> track<span id="plural">{{ '' if entries|length == 1 else 's' }}</span> waiting · oldest first</div>
+{% if entries %}
+<div class="copybar">
+  <button id="copy" type="button">Copy list</button>
+  <button class="playall" onclick="toggleQueue()">▶ Play all</button>
+  <span class="copyhint">copies one <code>Artist - Title</code> per line</span>
+</div>
+{% endif %}
+<div id="rows">
+{% for e in entries %}
+  <div class="cand" data-artist="{{ e.artist }}" data-title="{{ e.title }}">
+    {% if e.spotify_id %}
+      <button class="play" data-spotify-id="{{ e.spotify_id }}" data-spotify-type="{{ e.spotify_type or 'track' }}" onclick="togglePlay(this)" title="Play preview / full track">▶</button>
+    {% else %}
+      <span></span>
+    {% endif %}
+    <div class="cand-info">
+      <div class="cand-title">{{ e.title }}</div>
+      <div class="cand-artist">{{ e.artist }}</div>
+    </div>
+    {% set why = ('from ' ~ e.seed) if e.seed else (e.source_detail or '') %}
+    <span class="detail" title="{{ why }}">{{ why }}</span>
+    {% if e.spotify_id %}
+      <a href="https://open.spotify.com/{{ e.spotify_type or 'track' }}/{{ e.spotify_id }}" target="_blank" rel="noopener">Spotify</a>
+    {% else %}
+      <a href="{{ spotify_search_url(e.artist, e.title) }}" target="_blank" rel="noopener" class="secondary">Search</a>
+    {% endif %}
+    <span class="yt-cell">
+      {% if e.youtube_id %}
+        <button class="play yt" data-yt-id="{{ e.youtube_id }}" onclick="togglePlayYT(this)" title="Play on YouTube">▶</button>
+      {% endif %}
+      <a href="{{ youtube_search_url(e.artist, e.title) }}" target="_blank" rel="noopener" class="yt-search" title="Search on YouTube">YT↗</a>
+    </span>
+    <a href="{{ lastfm_url(e.artist, e.title) }}" target="_blank" rel="noopener" class="ext lfm" title="Browse on Last.fm">LFM↗</a>
+    <a href="{{ discogs_search_url(e.artist, e.title) }}" target="_blank" rel="noopener" class="ext dgs" title="Search on Discogs">DGS↗</a>
+    <a href="{{ dig_url(e.artist, e.title) }}" class="ext dig" title="Dig from here — new search seeded on this track">Dig↗</a>
+    <span class="when" title="queued {{ e.ts or '' }}">{{ (e.ts or '')[:10] }}</span>
+    <span class="rowacts">
+      <button class="cp" onclick="copyRow(this)" title="Copy &quot;{{ e.artist }} - {{ e.title }}&quot; to the clipboard">copy</button>
+      <button class="rm" onclick="removeEntry(this)" title="Remove from the queue">×</button>
+    </span>
+  </div>
+{% endfor %}
+</div>
+{% if not entries %}
+<div class="none">Nothing queued yet — hit ⬇ on any row to add it.</div>
+{% endif %}
+<div class="footer">stored in <code>download_queue.jsonl</code> · server started {{ server_started }}</div>
+</div>
+<script src="https://open.spotify.com/embed/iframe-api/v1" async></script>
+<script src="https://www.youtube.com/iframe_api" async></script>
+<script>
+{% include "_player.js" %}
+
+// --- Queue page: remove an entry, copy the whole list ---
+
+function refreshCount(n) {
+  document.getElementById('count').textContent = n;
+  document.getElementById('plural').textContent = n === 1 ? '' : 's';
+}
+
+function removeEntry(btn) {
+  const row = btn.closest('.cand');
+  btn.disabled = true;
+  fetch('/api/queue', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      action: 'remove',
+      artist: row.dataset.artist,
+      title: row.dataset.title,
+      page: location.pathname,
+    }),
+  }).then(function (r) {
+    if (!r.ok) throw new Error('bad status');
+    return r.json();
+  }).then(function (d) {
+    if (d.error) throw new Error(d.error);
+    if (DLQ) DLQ.delete(fbKey(row.dataset.artist, row.dataset.title));
+    row.remove();
+    refreshCount(d.count);
+  }).catch(function () {
+    btn.disabled = false;
+    alert('Removing failed — is the tecrawl server running?');
+  });
+}
+
+// navigator.clipboard needs a secure context. localhost counts as one, so the
+// async API runs on the Mac; reaching the server by LAN IP or Tailscale name
+// over plain HTTP does not, and those hit the textarea fallback. Both paths are
+// verified. Shared by the whole-list button and the per-row copy so a single
+// track and a bulk copy can never behave differently.
+function copyText(text, onDone) {
+  function fallback() {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) {}
+    ta.remove();
+    if (ok) onDone(); else alert('Copy failed — select the text manually.');
+  }
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(text).then(onDone).catch(fallback);
+  } else {
+    fallback();
+  }
+}
+
+// Briefly confirm on the button itself, then put it back.
+function flash(btn, label, cls) {
+  if (btn.dataset.orig === undefined) btn.dataset.orig = btn.textContent;
+  clearTimeout(+btn.dataset.timer || 0);
+  btn.textContent = label;
+  if (cls) btn.classList.add(cls);
+  btn.dataset.timer = setTimeout(function () {
+    btn.textContent = btn.dataset.orig;
+    if (cls) btn.classList.remove(cls);
+  }, 1500);
+}
+
+// One row's "Artist - Title" — the same line the whole-list copy produces, so
+// a single track and a bulk copy paste identically.
+function copyRow(btn) {
+  const row = btn.closest('.cand');
+  const text = row.dataset.artist + ' - ' + row.dataset.title;
+  copyText(text, function () { flash(btn, '✓ copied', 'done'); });
+}
+
+(function () {
+  const copy = document.getElementById('copy');
+  if (!copy) return;
+  copy.addEventListener('click', function () {
+    const lines = [];
+    document.querySelectorAll('#rows .cand').forEach(function (row) {
+      lines.push(row.dataset.artist + ' - ' + row.dataset.title);
+    });
+    copyText(lines.join('\n'), function () {
+      flash(copy, '✓ Copied ' + lines.length);
+    });
+  });
+})();
+</script>
+</body>
+</html>
