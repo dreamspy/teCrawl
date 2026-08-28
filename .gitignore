@@ -7,6 +7,8 @@
 credentials*.json
 secrets*.json
 service-account*.json
+# Spotify user OAuth tokens (refresh token = playback control of the account)
+.spotify_token.json
 
 # Obsidian vault config (this project lives inside an Obsidian vault)
 .obsidian/

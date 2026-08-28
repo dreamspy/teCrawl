@@ -20,9 +20,13 @@ import time
 import urllib.parse
 import webbrowser
 from datetime import datetime
+from html import escape as html_escape
 from pathlib import Path
 
-from . import cache, config, discover, dlqueue, feedback, localfiles, quick, render
+from . import (
+    cache, config, discover, dlqueue, feedback, localfiles, quick, render,
+    spotify_connect,
+)
 
 # Run files are named <YYYYMMDD>-<HHMMSS>.html (see render.write_page). We parse
 # that back into a real timestamp for display and sorting; anything that doesn't
@@ -164,11 +168,30 @@ def _pick_folder() -> tuple[str | None, str | None]:
     return (path or None), None
 
 
+
+def _notice_page(title: str, detail: str, ok: bool = False) -> str:
+    """Minimal standalone page for the OAuth round trip (the callback tab has
+    no run page to attach a message to)."""
+    colour = "#1db954" if ok else "#d44"
+    return (
+        "<!doctype html><meta charset='utf-8'>"
+        f"<title>{html_escape(title)}</title>"
+        "<body style=\"background:#0a0a0a;color:#e8e8e8;font-family:-apple-system,"
+        "system-ui,sans-serif;padding:3rem 1.5rem;line-height:1.5\">"
+        f"<h1 style='font-size:1.3rem;margin:0 0 .5rem;color:{colour}'>"
+        f"{html_escape(title)}</h1>"
+        f"<p style='color:#888;max-width:40rem'>{html_escape(detail)}</p>"
+        "<p><a href='/' style='color:#1db954'>← Back to teCrawl</a></p></body>"
+    )
+
 def serve(port: int = 8765, open_browser: bool = True, bind: str = "0.0.0.0") -> int:
     """Default bind is all interfaces so the page stays reachable from phones
     over Tailscale/LAN (see README). Pass bind="127.0.0.1" for local-only."""
     out_dir = config.OUTPUT_DIR
     out_dir.mkdir(parents=True, exist_ok=True)
+    # The OAuth redirect URI embeds the port, and Spotify matches it exactly,
+    # so a non-default port needs its own Redirect URI on the Spotify app.
+    spotify_connect.set_port(port)
     # Shown in page footers so a stale server (started before a code update,
     # so it lacks the newest features) is visible at a glance.
     server_started = time.strftime("%Y-%m-%d %H:%M")
@@ -196,6 +219,15 @@ def serve(port: int = 8765, open_browser: bool = True, bind: str = "0.0.0.0") ->
                 return self._send_json(feedback.latest())
             if path == "/api/queue":
                 return self._send_json({"keys": dlqueue.keys()})
+            if path == "/api/spotify/status":
+                return self._send_json(spotify_connect.status())
+            if path == "/spotify/login":
+                return self._spotify_login()
+            if path == "/spotify/logout":
+                spotify_connect.disconnect()
+                return self._redirect("/")
+            if path == "/callback":
+                return self._spotify_callback(parsed.query)
             # /<folder> or /<folder>/ → list the runs in that folder
             parts = [p for p in path.strip("/").split("/") if p]
             if len(parts) == 1:
@@ -218,7 +250,82 @@ def serve(port: int = 8765, open_browser: bool = True, bind: str = "0.0.0.0") ->
                 return self._api_queue_post()
             if path == "/api/more":
                 return self._api_more()
+            if path == "/api/spotify/play":
+                return self._api_spotify_play()
+            if path == "/api/spotify/pause":
+                return self._api_spotify_cmd(spotify_connect.pause)
+            if path == "/api/spotify/next":
+                return self._api_spotify_cmd(spotify_connect.next_track)
+            if path == "/api/spotify/previous":
+                return self._api_spotify_cmd(spotify_connect.previous_track)
             self.send_error(404)
+
+        # --- Spotify Connect -------------------------------------------
+        # The embed player only ever gives a 30s preview unless its iframe
+        # can read a first-party Spotify session, which browsers block. So
+        # playback goes through the user's own Spotify client instead.
+
+        def _redirect(self, location: str) -> None:
+            self.send_response(302)
+            self.send_header("Location", location)
+            self.end_headers()
+
+        def _spotify_login(self) -> None:
+            try:
+                self._redirect(spotify_connect.authorize_url())
+            except spotify_connect.NotConnected as e:
+                self._send_html(_notice_page("Can't start Spotify login", str(e)))
+
+        def _spotify_callback(self, query: str) -> None:
+            q = urllib.parse.parse_qs(query)
+            if q.get("error"):
+                return self._send_html(_notice_page(
+                    "Spotify login cancelled", q["error"][0]))
+            try:
+                spotify_connect.exchange_code(
+                    q.get("code", [""])[0], q.get("state", [""])[0])
+            except (spotify_connect.ConnectError,
+                    spotify_connect.NotConnected) as e:
+                return self._send_html(_notice_page("Spotify login failed", str(e)))
+            self._send_html(_notice_page(
+                "Connected to Spotify",
+                "Play buttons now drive your own Spotify player. "
+                "You can close this tab.", ok=True))
+
+        def _spotify_body(self) -> dict:
+            n = min(int(self.headers.get("Content-Length") or 0), 10_000)
+            return json.loads(self.rfile.read(n).decode("utf-8")) if n else {}
+
+        def _api_spotify_play(self) -> None:
+            try:
+                body = self._spotify_body()
+                spotify_connect.play(
+                    body.get("spotify_id", ""),
+                    body.get("type") or "track",
+                    body.get("device_id") or None,
+                )
+            except spotify_connect.NotConnected as e:
+                return self._send_json(
+                    {"error": str(e), "reason": "not_connected"}, status=401)
+            except spotify_connect.NoActiveDevice as e:
+                return self._send_json(
+                    {"error": str(e), "reason": "no_device"}, status=409)
+            except Exception as e:
+                return self._send_json({"error": str(e)}, status=502)
+            self._send_json({"ok": True})
+
+        def _api_spotify_cmd(self, fn) -> None:
+            try:
+                fn()
+            except spotify_connect.NotConnected as e:
+                return self._send_json(
+                    {"error": str(e), "reason": "not_connected"}, status=401)
+            except spotify_connect.NoActiveDevice as e:
+                return self._send_json(
+                    {"error": str(e), "reason": "no_device"}, status=409)
+            except Exception as e:
+                return self._send_json({"error": str(e)}, status=502)
+            self._send_json({"ok": True})
 
         def _api_feedback_post(self) -> None:
             try:

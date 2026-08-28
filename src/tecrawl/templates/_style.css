@@ -514,6 +514,41 @@ a.secondary { color: #888; }
 .coverage a { font-size: inherit; }
 .coverage .cov-missing { opacity: .8; }
 
+/* --- Spotify Connect bar ---
+   Injected by _player.js (connectBarEl), not the templates, so every page
+   with a player gets it. Explains why the green play is a 30s preview until
+   the user authorizes, then reports which of their devices is playing. */
+.connectbar {
+  display: flex;
+  align-items: center;
+  gap: .6rem;
+  flex-wrap: wrap;
+  margin: 0 0 1.5rem;
+  padding: .5rem .75rem;
+  border: 1px dashed #1db95455;
+  border-radius: 6px;
+  font-size: .8rem;
+}
+.connectbar.on { border-style: solid; border-color: #1db95430; }
+.connect-go {
+  background: var(--accent);
+  color: #000;
+  font-weight: 600;
+  font-size: .78rem;
+  padding: .25rem .6rem;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+.connect-go:hover { background: #1ed760; text-decoration: none; }
+.connect-on { color: var(--accent); font-weight: 600; white-space: nowrap; }
+.connect-note { color: var(--muted); min-width: 0; }
+.connect-warn { color: #d4a651; }
+.connect-off { color: #777; font-size: .75rem; margin-left: auto; }
+.connect-off:hover { color: #d44; text-decoration: none; }
+/* A row driving the user's real Spotify player, as opposed to an inline
+   embed — there is no iframe on the page to show what's playing. */
+.play.connect-playing { background: var(--accent); color: #000; }
+
 /* --- Fixed transport bar ---
    Always-visible controls for whatever is playing, so skipping doesn't depend
    on the media keys and the playing track stays identifiable wherever you've

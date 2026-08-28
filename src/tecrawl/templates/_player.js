@@ -6,6 +6,14 @@ let QUEUE = null;        // {items: [{btn,row,artist,title}], idx} while playing
 let silentKeeper = null; // near-silent looping <audio>, see startSilentKeeper()
 let NOW = null;          // {row,title,artist} playing on YouTube, queue or single row
 
+// --- Spotify Connect ---
+// The IFrame embed only plays a 30s preview unless it can read a first-party
+// Spotify session, and browsers block that cookie in a cross-origin iframe.
+// So when the user has authorized us, playback is driven through their own
+// Spotify client instead and the embed becomes the unauthorized fallback.
+let CONNECT = {connected: false, devices: [], active: null};
+let connectBtn = null;   // the .play button currently driving Spotify
+
 window.onSpotifyIframeApiReady = function (api) {
   SpotifyAPI = api;
   if (pendingClick) {
@@ -827,7 +835,115 @@ function showMore(btn) {
   });
 }
 
+function refreshConnect() {
+  return fetch('/api/spotify/status')
+    .then(function (r) { return r.json(); })
+    .then(function (st) { CONNECT = st; renderConnectBar(); return st; })
+    .catch(function () { return CONNECT; });
+}
+
+function connectBarEl() {
+  let bar = document.getElementById('connectbar');
+  if (!bar) {
+    const wrap = document.querySelector('.wrap');
+    if (!wrap) return null;
+    bar = document.createElement('div');
+    bar.id = 'connectbar';
+    bar.className = 'connectbar';
+    const anchor = wrap.querySelector('.queuebar') || wrap.querySelector('h1');
+    if (anchor && anchor.nextSibling) wrap.insertBefore(bar, anchor.nextSibling);
+    else wrap.appendChild(bar);
+  }
+  return bar;
+}
+
+function renderConnectBar(msg) {
+  const bar = connectBarEl();
+  if (!bar) return;
+  if (!CONNECT.connected) {
+    bar.className = 'connectbar';
+    bar.innerHTML =
+      '<a class="connect-go" href="/spotify/login">Connect Spotify</a>' +
+      '<span class="connect-note">green \u25b6 plays a 30s preview until you do \u2014 ' +
+      'connect to play full tracks in your own Spotify app</span>';
+    return;
+  }
+  const active = (CONNECT.devices || []).filter(function (d) { return d.active; })[0];
+  const where = active ? active.name
+    : (CONNECT.devices && CONNECT.devices.length ? 'no active device' : 'Spotify not open');
+  bar.className = 'connectbar on';
+  bar.innerHTML =
+    '<span class="connect-on">\u25cf Spotify connected</span>' +
+    '<span class="connect-note">playing on: ' + escapeHtml(where) +
+    (msg ? ' \u2014 <span class="connect-warn">' + escapeHtml(msg) + '</span>' : '') +
+    '</span><a class="connect-off" href="/spotify/logout">disconnect</a>';
+}
+
+function escapeHtml(s) {
+  const d = document.createElement('div');
+  d.textContent = s == null ? '' : String(s);
+  return d.innerHTML;
+}
+
+function markConnectBtn(btn, playing) {
+  if (!btn) return;
+  btn.textContent = playing ? '\u23f8' : '\u25b6';
+  btn.classList.toggle('connect-playing', !!playing);
+}
+
+// Drive the user's real Spotify player. Full track, their device, no iframe.
+function togglePlayConnect(btn) {
+  if (QUEUE) queueStop();
+  closeAllEmbeds();
+  if (connectBtn === btn) {
+    markConnectBtn(btn, false);
+    connectBtn = null;
+    fetch('/api/spotify/pause', {method: 'POST'}).catch(function () {});
+    return;
+  }
+  markConnectBtn(connectBtn, false);
+  connectBtn = btn;
+  btn.textContent = '\u2026';
+  fetch('/api/spotify/play', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      spotify_id: btn.dataset.spotifyId,
+      type: btn.dataset.spotifyType || 'track'
+    })
+  }).then(function (r) {
+    return r.json().then(function (b) { return {ok: r.ok, body: b}; });
+  }).then(function (res) {
+    if (res.ok) { markConnectBtn(btn, true); renderConnectBar(); return; }
+    connectBtn = null;
+    markConnectBtn(btn, false);
+    if (res.body.reason === 'not_connected') {
+      CONNECT = {connected: false, devices: [], active: null};
+      renderConnectBar();
+    } else if (res.body.reason === 'no_device') {
+      // Spotify has no player to talk to. Nothing we can do from here:
+      // the user has to open Spotify somewhere once.
+      renderConnectBar('open Spotify on any device, then press play again');
+    } else {
+      renderConnectBar(res.body.error || 'Spotify playback failed');
+    }
+  }).catch(function () {
+    connectBtn = null;
+    markConnectBtn(btn, false);
+    renderConnectBar('could not reach the teCrawl server');
+  });
+}
+
+// Connect when authorized, embed preview otherwise.
 function togglePlay(btn) {
+  if (CONNECT.connected) return togglePlayConnect(btn);
+  return togglePlayEmbed(btn);
+}
+
+// Same top-level-fetch pattern as the feedback and download-queue state.
+refreshConnect();
+
+function togglePlayEmbed(btn) {
   if (QUEUE) queueStop(); // manual Spotify play takes over from the queue
   const cand = btn.closest('.cand, .seed-head, .pick, .seed-row');
   const existing = cand.querySelector('.embed');
