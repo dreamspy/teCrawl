@@ -365,6 +365,23 @@ a.secondary { color: #888; }
 .fb .dl:hover { border-color: #5aa9e6; color: #5aa9e6; background: rgba(90,169,230,.10); }
 .fb .dl.on { border-color: #5aa9e6; color: #041018; background: #5aa9e6; font-weight: 600; }
 .fb .dl.on:hover { background: #7fbdec; color: #041018; }
+/* Copy "Artist - Title". Blue like the queue button: both are about getting
+   the track out of teCrawl and into something else. The .fb prefix is needed
+   to beat the generic `.fb button` rule above. */
+.cp, .fb .cp {
+  background: transparent;
+  border: 1px solid #5aa9e660;
+  color: #7fbdec;
+  border-radius: 3px;
+  padding: .14rem .4rem;
+  cursor: pointer;
+  font-size: .68rem;
+  font-family: inherit;
+  line-height: 1;
+  white-space: nowrap;
+}
+.cp:hover, .fb .cp:hover { border-color: #5aa9e6; color: #5aa9e6; background: rgba(90,169,230,.10); }
+.cp.done, .fb .cp.done { border-color: var(--accent); color: var(--accent); background: rgba(29,185,84,.12); }
 .why-panel {
   grid-column: 1 / -1;
   color: var(--muted);

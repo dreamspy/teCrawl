@@ -37,6 +37,7 @@
     <button class="why" onclick="toggleWhy(this)" title="Why is this recommended?" data-why="{{ source_labels.get(c.source, c.source) }} · {{ source_descriptions.get(c.source, '') }} · {{ c.source_detail }} · from your seed: {{ seed.artist }} — {{ seed.title }}">why?</button>
     <button class="fb-up" onclick="sendFeedback(this, 'up')" title="Good recommendation (saved to feedback.jsonl)">👍</button>
     <button class="fb-down" onclick="sendFeedback(this, 'down')" title="Bad recommendation (saved to feedback.jsonl)">👎</button>
+    <button class="cp" onclick="copyTrack(this)" title="Copy &quot;Artist - Title&quot; to the clipboard">copy</button>
     <button class="dl" onclick="toggleDownload(this)" title="Add to download queue">⬇ queue</button>
   </span>
 </div>

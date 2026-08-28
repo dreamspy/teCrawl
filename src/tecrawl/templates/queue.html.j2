@@ -27,20 +27,6 @@
 }
 .rm:hover { border-color: #ff4c4c; color: #ff4c4c; }
 .rowacts { display: inline-flex; gap: .3rem; align-items: center; }
-.cp {
-  background: transparent;
-  border: 1px solid #5aa9e660;
-  color: #7fbdec;
-  border-radius: 3px;
-  padding: .14rem .4rem;
-  cursor: pointer;
-  font-size: .7rem;
-  font-family: inherit;
-  line-height: 1;
-  white-space: nowrap;
-}
-.cp:hover { border-color: #5aa9e6; color: #5aa9e6; background: rgba(90,169,230,.10); }
-.cp.done { border-color: var(--accent); color: var(--accent); background: rgba(29,185,84,.12); }
 .copybar {
   display: flex;
   align-items: center;
@@ -118,7 +104,7 @@
     <a href="{{ dig_url(e.artist, e.title) }}" class="ext dig" title="Dig from here — new search seeded on this track">Dig↗</a>
     <span class="when" title="queued {{ e.ts or '' }}">{{ (e.ts or '')[:10] }}</span>
     <span class="rowacts">
-      <button class="cp" onclick="copyRow(this)" title="Copy &quot;{{ e.artist }} - {{ e.title }}&quot; to the clipboard">copy</button>
+      <button class="cp" onclick="copyTrack(this)" title="Copy &quot;{{ e.artist }} - {{ e.title }}&quot; to the clipboard">copy</button>
       <button class="rm" onclick="removeEntry(this)" title="Remove from the queue">×</button>
     </span>
   </div>
@@ -165,51 +151,6 @@ function removeEntry(btn) {
     btn.disabled = false;
     alert('Removing failed — is the tecrawl server running?');
   });
-}
-
-// navigator.clipboard needs a secure context. localhost counts as one, so the
-// async API runs on the Mac; reaching the server by LAN IP or Tailscale name
-// over plain HTTP does not, and those hit the textarea fallback. Both paths are
-// verified. Shared by the whole-list button and the per-row copy so a single
-// track and a bulk copy can never behave differently.
-function copyText(text, onDone) {
-  function fallback() {
-    const ta = document.createElement('textarea');
-    ta.value = text;
-    ta.style.position = 'fixed';
-    ta.style.opacity = '0';
-    document.body.appendChild(ta);
-    ta.select();
-    let ok = false;
-    try { ok = document.execCommand('copy'); } catch (e) {}
-    ta.remove();
-    if (ok) onDone(); else alert('Copy failed — select the text manually.');
-  }
-  if (navigator.clipboard && window.isSecureContext) {
-    navigator.clipboard.writeText(text).then(onDone).catch(fallback);
-  } else {
-    fallback();
-  }
-}
-
-// Briefly confirm on the button itself, then put it back.
-function flash(btn, label, cls) {
-  if (btn.dataset.orig === undefined) btn.dataset.orig = btn.textContent;
-  clearTimeout(+btn.dataset.timer || 0);
-  btn.textContent = label;
-  if (cls) btn.classList.add(cls);
-  btn.dataset.timer = setTimeout(function () {
-    btn.textContent = btn.dataset.orig;
-    if (cls) btn.classList.remove(cls);
-  }, 1500);
-}
-
-// One row's "Artist - Title" — the same line the whole-list copy produces, so
-// a single track and a bulk copy paste identically.
-function copyRow(btn) {
-  const row = btn.closest('.cand');
-  const text = row.dataset.artist + ' - ' + row.dataset.title;
-  copyText(text, function () { flash(btn, '✓ copied', 'done'); });
 }
 
 (function () {

@@ -706,6 +706,55 @@ function toggleDownload(btn) {
   });
 }
 
+// --- Copy "Artist - Title" to the clipboard. Shared by the candidate rows,
+// the top picks, the seed header and both buttons on /queue, so a single
+// track and a bulk copy can never produce different text. ---
+
+// navigator.clipboard needs a secure context. localhost counts as one, so the
+// async API runs on the Mac; reaching the server by LAN IP or Tailscale name
+// over plain HTTP does not, and those hit the textarea fallback.
+function copyText(text, onDone) {
+  function fallback() {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) {}
+    ta.remove();
+    if (ok) onDone(); else alert('Copy failed — select the text manually.');
+  }
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(text).then(onDone).catch(fallback);
+  } else {
+    fallback();
+  }
+}
+
+// Briefly confirm on the button itself, then put it back.
+function flash(btn, label, cls) {
+  if (btn.dataset.orig === undefined) btn.dataset.orig = btn.textContent;
+  clearTimeout(+btn.dataset.timer || 0);
+  btn.textContent = label;
+  if (cls) btn.classList.add(cls);
+  btn.dataset.timer = setTimeout(function () {
+    btn.textContent = btn.dataset.orig;
+    if (cls) btn.classList.remove(cls);
+  }, 1500);
+}
+
+// Nearest ancestor carrying the track: the .fb span on run/search rows, the
+// .cand row itself on /queue. Both expose data-artist/data-title.
+function copyTrack(btn) {
+  const el = btn.closest('[data-artist]');
+  if (!el) return;
+  copyText(el.dataset.artist + ' - ' + el.dataset.title, function () {
+    flash(btn, '✓ copied', 'done');
+  });
+}
+
 function toggleWhy(btn) {
   const row = btn.closest('.cand, .pick');
   const existing = row.querySelector('.why-panel');

@@ -157,7 +157,8 @@ Each row has:
 - **Spotify** / **Search** link (deep link to Spotify or a search if not resolved)
 - **why?** — expands a one-line explanation of exactly why this track surfaced (which discovery angle, from which of your seeds)
 - **👍 / 👎** — record your verdict; click the same thumb again to undo. After a thumb, an optional note field opens (quick-tap chips like "totally irrelevant" / "more like this", or free text) — your own reason is the highest-signal data for tuning the algorithm later
-- **⬇** — add to the download queue (see below); click again to remove
+- **copy** — puts `Artist - Title` on your clipboard, for pasting into a store, a tracker, or a search
+- **⬇ queue** — add to the download queue (see below); click again to remove
 
 The **★ Top picks** section at the top shows candidates that surfaced from 3+ of your seed tracks — strong cross-signal.
 
@@ -173,7 +174,7 @@ Every 👍/👎 appends one line to `feedback.jsonl` at the repo root (gitignore
 
 ### ⬇ Download queue
 
-Hitting **⬇** on any row (candidate, ★ top pick, or the seed header) marks it "grab this later" without interrupting what you're listening to. Click it again to take it back out.
+Hitting **⬇ queue** on any row (candidate, ★ top pick, or the seed header) marks it "grab this later" without interrupting what you're listening to. Click it again to take it back out. The neighbouring **copy** button is the shortcut for when you want the track right now rather than later: it copies `Artist - Title` and nothing else.
 
 Everything queued is listed at **`/queue`**, linked from the top of every page and with a count on the index. That page shows each track with the seed you were digging when you queued it, the usual YT / Last.fm / Discogs / Dig links, a working YouTube player and ▶ Play all, a **×** to remove an entry by hand, and a **copy** button on each row for that one `Artist - Title`, and a **Copy list** button that puts every queued track on your clipboard one per line — paste either into a store search, a tracker, or wherever you actually acquire music.
 

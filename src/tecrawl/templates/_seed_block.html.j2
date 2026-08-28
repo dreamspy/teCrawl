@@ -33,6 +33,7 @@
          recommendation to judge. Worth having on a quick search, where the
          seed is a track you pasted and may well want to grab. #}
       <span class="fb" data-artist="{{ seed.artist }}" data-title="{{ seed.title }}" data-context="seed">
+        <button class="cp" onclick="copyTrack(this)" title="Copy &quot;Artist - Title&quot; to the clipboard">copy</button>
         <button class="dl" onclick="toggleDownload(this)" title="Add to download queue">⬇ queue</button>
       </span>
     </span>
