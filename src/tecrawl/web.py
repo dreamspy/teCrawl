@@ -6,6 +6,7 @@ Routing:
   /search         → quick-search page (auto-runs when ?q= is present)
   /queue          → the "grab this later" download queue
   /api/discover   → Server-Sent Events stream running one discovery
+  /api/stop       → cancel the run currently holding _RUN_LOCK
   /<slug>/        → newest run for that playlist
   /<slug>/<f>     → a specific run
 """
@@ -95,6 +96,14 @@ def _folder_runs(sub: Path) -> list[dict]:
 # and interleaved runs would fight over rate limits anyway. A second request
 # queues (with a status message) until the first finishes.
 _RUN_LOCK = threading.Lock()
+
+# Cooperative cancel flag for whichever run currently holds _RUN_LOCK. Cleared
+# right after a run acquires the lock, set by POST /api/stop, and checked at
+# the say()/progress() checkpoints inside discover.py — a plain threading
+# thread can't be force-killed mid-network-call, so this is the only safe way
+# to cut a run short. One event (not per-run) is enough because _RUN_LOCK
+# already serializes runs to at most one at a time.
+_CANCEL_EVENT = threading.Event()
 
 
 def _truthy(v: str) -> bool:
@@ -250,6 +259,8 @@ def serve(port: int = 8765, open_browser: bool = True, bind: str = "0.0.0.0") ->
                 return self._api_queue_post()
             if path == "/api/more":
                 return self._api_more()
+            if path == "/api/stop":
+                return self._api_stop()
             if path == "/api/spotify/play":
                 return self._api_spotify_play()
             if path == "/api/spotify/pause":
@@ -419,6 +430,14 @@ def serve(port: int = 8765, open_browser: bool = True, bind: str = "0.0.0.0") ->
                 "exhausted": exhausted,
             })
 
+        def _api_stop(self) -> None:
+            """Signal cancellation for whichever discovery run currently
+            holds _RUN_LOCK. A harmless no-op if nothing is running (or the
+            run already finished) — the flag is cleared again at the start
+            of the next run either way."""
+            _CANCEL_EVENT.set()
+            self._send_json({"ok": True})
+
         def _send_html(self, html_text: str) -> None:
             data = html_text.encode("utf-8")
             self.send_response(200)
@@ -558,6 +577,9 @@ def serve(port: int = 8765, open_browser: bool = True, bind: str = "0.0.0.0") ->
                     emit({"type": "status",
                           "message": "Another search is running · queued…"})
                     _RUN_LOCK.acquire()
+                # Fresh lock holder: clear any stale cancel from a previous
+                # (possibly stopped) run before this one can be flagged.
+                _CANCEL_EVENT.clear()
                 # Bypass is a module global in cache; set it only while we hold
                 # the single-run lock so concurrent requests can't clobber it.
                 cache.set_bypass(fresh)
@@ -566,7 +588,7 @@ def serve(port: int = 8765, open_browser: bool = True, bind: str = "0.0.0.0") ->
                           "message": "Fresh dig — skipping cache, re-fetching every source."})
                 try:
                     if folder is not None:
-                        self._run_folder(folder, emit)
+                        self._run_folder(folder, emit, _CANCEL_EVENT)
                         return
                     t0 = time.time()
                     emit({"type": "status", "message": "Resolving input…"})
@@ -579,6 +601,7 @@ def serve(port: int = 8765, open_browser: bool = True, bind: str = "0.0.0.0") ->
                             "title": tr.title,
                             "note": note,
                         }),
+                        cancel=_CANCEL_EVENT,
                     )
                     html_frag = render.render_seed_fragment(
                         result.track, result.release, result.candidates
@@ -599,6 +622,12 @@ def serve(port: int = 8765, open_browser: bool = True, bind: str = "0.0.0.0") ->
                 finally:
                     cache.set_bypass(False)
                     _RUN_LOCK.release()
+            except discover.Cancelled:
+                try:
+                    emit({"type": "stopped",
+                          "elapsed": round(time.time() - t0, 1)})
+                except OSError:
+                    pass
             except quick.InputError as e:
                 try:
                     emit({"type": "error", "message": str(e)})
@@ -612,12 +641,19 @@ def serve(port: int = 8765, open_browser: bool = True, bind: str = "0.0.0.0") ->
                 except OSError:
                     pass
 
-        def _run_folder(self, folder, emit) -> None:
+        def _run_folder(self, folder, emit, cancel) -> None:
             """Multi-seed run over a local folder: each seed's results block
             streams to the page the moment that seed finishes. If the tab
             closes mid-run, the current seed completes, everything done so
             far still persists to output/ (the API work is already spent),
-            and the run stops instead of grinding through the rest."""
+            and the run stops instead of grinding through the rest.
+
+            `cancel` (a `threading.Event`, set by /api/stop): checked before
+            each seed and passed into the discovery calls, which raise
+            `discover.Cancelled` between their own API hops — so a Stop click
+            interrupts the *current* seed too rather than waiting for it to
+            finish. Seeds already streamed via seed_html before the stop are
+            kept; the interrupted seed is dropped, not added half-done."""
             dead = [False]
 
             def say_json(obj: dict) -> None:
@@ -632,7 +668,16 @@ def serve(port: int = 8765, open_browser: bool = True, bind: str = "0.0.0.0") ->
                 say_json({"type": "status", "message": m})
 
             t0 = time.time()
-            fscan = localfiles.scan(folder)
+            try:
+                fscan = localfiles.scan(folder, cancel=cancel)
+            except discover.Cancelled:
+                say_json({
+                    "type": "stopped",
+                    "elapsed": round(time.time() - t0, 1),
+                    "seeds": 0,
+                    "candidates": 0,
+                })
+                return
             for p, reason in fscan.skipped:
                 say_json({"type": "note",
                           "message": f"skipped {p.name} — {reason}"})
@@ -653,7 +698,7 @@ def serve(port: int = 8765, open_browser: bool = True, bind: str = "0.0.0.0") ->
             total_cands = 0
             run_seen: set = set()  # rotates "Same vibe" across seeds
             for i, st in enumerate(fscan.tracks, 1):
-                if dead[0]:
+                if dead[0] or cancel.is_set():
                     break
                 prefix = f"[{i}/{n}] {st.track.artist} — {st.track.title}"
                 status(f"{prefix} · digging…")
@@ -661,10 +706,16 @@ def serve(port: int = 8765, open_browser: bool = True, bind: str = "0.0.0.0") ->
                 release = None
                 try:
                     release, cands = discover.discover_for_seed(
-                        st.track, progress=say, run_seen=run_seen
+                        st.track, progress=say, run_seen=run_seen, cancel=cancel
                     )
-                    cands = discover.resolve_to_spotify(cands, progress=say)
-                    cands = discover.resolve_to_youtube(cands, progress=say)
+                    cands = discover.resolve_to_spotify(
+                        cands, progress=say, cancel=cancel
+                    )
+                    cands = discover.resolve_to_youtube(
+                        cands, progress=say, cancel=cancel
+                    )
+                except discover.Cancelled:
+                    break
                 except Exception as e:
                     say_json({"type": "note", "message": (
                         f"⚠ seed failed — {st.track.artist} — "
@@ -678,6 +729,17 @@ def serve(port: int = 8765, open_browser: bool = True, bind: str = "0.0.0.0") ->
                     "html": render.render_seed_fragment(st.track, release, cands),
                 })
 
+            stopped = cancel.is_set()
+            if not seed_blocks:
+                # Stopped before any seed finished — nothing worth persisting.
+                say_json({
+                    "type": "stopped",
+                    "elapsed": round(time.time() - t0, 1),
+                    "seeds": 0,
+                    "candidates": 0,
+                })
+                return
+
             top_picks = discover.aggregate_top_picks(
                 seed_blocks, min_hits=discover.default_min_hits(len(seed_blocks))
             )
@@ -686,7 +748,7 @@ def serve(port: int = 8765, open_browser: bool = True, bind: str = "0.0.0.0") ->
             )
             rel = out_path.relative_to(config.OUTPUT_DIR)
             say_json({
-                "type": "done",
+                "type": "stopped" if stopped else "done",
                 "tops_html": render.render_top_picks_fragment(top_picks),
                 "permalink": "/" + "/".join(
                     urllib.parse.quote(part) for part in rel.parts

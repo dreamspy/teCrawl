@@ -1,6 +1,7 @@
 from typing import NamedTuple
 
 from . import discogs, discogs_scrape, lastfm, spotify, youtube
+from .cancel import Cancelled  # re-exported: callers use discover.Cancelled
 
 
 class Candidate(NamedTuple):
@@ -96,6 +97,7 @@ def discover_for_seed(
     seed: spotify.Track,
     progress=None,
     run_seen: set[tuple[str, str]] | None = None,
+    cancel=None,
 ) -> tuple[discogs.Release | None, list[Candidate]]:
     """`progress` (optional) receives human-readable stage messages — used by
     the quick-search page to stream live status. Warnings still print to the
@@ -106,8 +108,17 @@ def discover_for_seed(
     identical "Same vibe" lists — and those duplicates would fake cross-seed
     top-picks signal. Passing one shared set per run makes each seed skip
     style candidates already shown by earlier seeds and surface the next
-    slice instead."""
-    say = progress or (lambda m: None)
+    slice instead.
+
+    `cancel` (optional): an object with `.is_set()` (a `threading.Event`).
+    Checked at every `say()` call — the same checkpoints between API hops
+    used for progress — and raises `Cancelled` to unwind the run early."""
+    _progress = progress or (lambda m: None)
+
+    def say(m: str) -> None:
+        if cancel is not None and cancel.is_set():
+            raise Cancelled()
+        _progress(m)
 
     def warn(msg: str) -> None:
         if progress:
@@ -209,7 +220,9 @@ def discover_for_seed(
                 if release.exact
                 else f"recommended with {release.title}"
             )
-            for a, t, rid in discogs_scrape.recommendations(release.release_id, limit=10):
+            for a, t, rid in discogs_scrape.recommendations(
+                release.release_id, limit=10, cancel=cancel
+            ):
                 candidates.append(
                     Candidate(
                         a, t, "discogs_recommendation", rec_detail,
@@ -217,6 +230,8 @@ def discover_for_seed(
                         discogs_release_id=rid,
                     )
                 )
+        except Cancelled:
+            raise
         except discogs_scrape.ScrapeUnavailable as e:
             warn(str(e))
         except Exception as e:
@@ -486,13 +501,22 @@ def more_candidates(
 
 
 def resolve_to_youtube(
-    candidates: list[Candidate], progress=None
+    candidates: list[Candidate], progress=None, cancel=None
 ) -> list[Candidate]:
     """Look up a YouTube video ID per candidate (no API key — public search
     page scrape, cached). YouTube has nearly everything techno releases on
     Bandcamp/Discogs do, so this is the catch-all playable for candidates
-    that aren't on Spotify."""
-    say = progress or (lambda m: None)
+    that aren't on Spotify.
+
+    `cancel`: see `discover_for_seed` — checked at the same per-candidate
+    say() checkpoint, raising `Cancelled` between candidates."""
+    _progress = progress or (lambda m: None)
+
+    def say(m: str) -> None:
+        if cancel is not None and cancel.is_set():
+            raise Cancelled()
+        _progress(m)
+
     out: list[Candidate] = []
     n = len(candidates)
     for i, c in enumerate(candidates, 1):
@@ -509,9 +533,17 @@ def resolve_to_youtube(
 
 
 def resolve_to_spotify(
-    candidates: list[Candidate], progress=None
+    candidates: list[Candidate], progress=None, cancel=None
 ) -> list[Candidate]:
-    say = progress or (lambda m: None)
+    """`cancel`: see `discover_for_seed` — checked at the same per-candidate
+    say() checkpoint, raising `Cancelled` between candidates."""
+    _progress = progress or (lambda m: None)
+
+    def say(m: str) -> None:
+        if cancel is not None and cancel.is_set():
+            raise Cancelled()
+        _progress(m)
+
     out: list[Candidate] = []
     n = len(candidates)
     unavailable = False
