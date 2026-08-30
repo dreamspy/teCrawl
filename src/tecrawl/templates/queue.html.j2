@@ -64,7 +64,7 @@
 </head>
 <body>
 <div class="wrap">
-<div class="meta"><a href="/">← All playlists</a></div>
+<div class="meta"><a href="/">← All playlists</a> · <a href="/inbox">💡 Inbox</a></div>
 <h1>⬇ Download queue</h1>
 <div class="meta"><span id="count">{{ entries|length }}</span> track<span id="plural">{{ '' if entries|length == 1 else 's' }}</span> waiting · oldest first</div>
 {% if entries %}
@@ -115,6 +115,7 @@
 {% endif %}
 <div class="footer">stored in <code>download_queue.jsonl</code> · server started {{ server_started }}</div>
 </div>
+{% include "_todo_capture.html.j2" %}
 <script src="https://open.spotify.com/embed/iframe-api/v1" async></script>
 <script src="https://www.youtube.com/iframe_api" async></script>
 <script>

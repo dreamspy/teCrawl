@@ -75,6 +75,7 @@ a.row:hover { color: var(--accent); text-decoration: none; }
 </form>
 <div class="hint">Quick search: one track, or a local folder of audio files (<code>/Users/you/Music/crate</code>) · for Spotify playlists run <code>tecrawl &lt;csv&gt;</code></div>
 <a class="queuelink" href="/queue">⬇ Download queue<span class="n">{{ queue_count }}</span></a>
+<a class="queuelink" href="/inbox">💡 Inbox</a>
 <div class="section-title">Playlists</div>
 {% if folders %}
   {% for f in folders %}
@@ -85,6 +86,7 @@ a.row:hover { color: var(--accent); text-decoration: none; }
 {% endif %}
 <div class="footer">server started {{ server_started }} · after updating teCrawl, restart <code>tecrawl serve</code> to pick up new features</div>
 </div>
+{% include "_todo_capture.html.j2" %}
 <script>
 (function () {
   const browse = document.getElementById('browse');

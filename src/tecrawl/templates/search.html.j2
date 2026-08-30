@@ -74,7 +74,7 @@
 </head>
 <body>
 <div class="wrap">
-<div class="meta"><a href="/">← All playlists</a> · <a href="/queue">⬇ Download queue</a></div>
+<div class="meta"><a href="/">← All playlists</a> · <a href="/queue">⬇ Download queue</a> · <a href="/inbox">💡 Inbox</a></div>
 <h1>teCrawl — quick search</h1>
 <form class="searchbar" id="f">
   <input id="q" name="q" placeholder="Track name, Spotify/YouTube link, or folder path" autocomplete="off" autofocus value="{{ q or '' }}">
@@ -102,6 +102,7 @@
 <div id="results"></div>
 <div class="footer">server started {{ server_started }} · after updating teCrawl, restart <code>tecrawl serve</code> to pick up new features</div>
 </div>
+{% include "_todo_capture.html.j2" %}
 <script src="https://open.spotify.com/embed/iframe-api/v1" async></script>
 <script src="https://www.youtube.com/iframe_api" async></script>
 <script>

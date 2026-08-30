@@ -5,6 +5,7 @@ Routing:
   /               → index: search box + list of playlists
   /search         → quick-search page (auto-runs when ?q= is present)
   /queue          → the "grab this later" download queue
+  /inbox          → the 💡 self-capture inbox (feature ideas / bugs)
   /api/discover   → Server-Sent Events stream running one discovery
   /api/stop       → cancel the run currently holding _RUN_LOCK
   /<slug>/        → newest run for that playlist
@@ -26,7 +27,7 @@ from pathlib import Path
 
 from . import (
     cache, config, discover, dlqueue, feedback, localfiles, quick, render,
-    spotify_connect,
+    spotify_connect, todo_inbox,
 )
 
 # Run files are named <YYYYMMDD>-<HHMMSS>.html (see render.write_page). We parse
@@ -220,6 +221,8 @@ def serve(port: int = 8765, open_browser: bool = True, bind: str = "0.0.0.0") ->
             # happens to be named "queue" can't shadow the queue page.
             if path in ("/queue", "/queue/"):
                 return self._send_queue()
+            if path in ("/inbox", "/inbox/"):
+                return self._send_inbox()
             if path == "/api/discover":
                 return self._api_discover(parsed.query)
             if path == "/api/pick-folder":
@@ -257,6 +260,8 @@ def serve(port: int = 8765, open_browser: bool = True, bind: str = "0.0.0.0") ->
                 return self._api_feedback_post()
             if path == "/api/queue":
                 return self._api_queue_post()
+            if path == "/api/todo":
+                return self._api_todo_post()
             if path == "/api/more":
                 return self._api_more()
             if path == "/api/stop":
@@ -363,6 +368,16 @@ def serve(port: int = 8765, open_browser: bool = True, bind: str = "0.0.0.0") ->
                 "action": stored["action"],
                 "count": len(dlqueue.active()),
             })
+
+        def _api_todo_post(self) -> None:
+            try:
+                n = min(int(self.headers.get("Content-Length") or 0), 100_000)
+                body = json.loads(self.rfile.read(n).decode("utf-8")) if n else {}
+                stored = todo_inbox.record(body)
+            except (ValueError, UnicodeDecodeError) as e:
+                self._send_json({"error": str(e)}, status=400)
+                return
+            self._send_json({"ok": True, "action": stored["action"]})
 
         def _api_more(self) -> None:
             """Extend one already-rendered section with the next batch of
@@ -477,6 +492,18 @@ def serve(port: int = 8765, open_browser: bool = True, bind: str = "0.0.0.0") ->
                 render.render_template(
                     "queue.html.j2",
                     entries=dlqueue.active(),
+                    server_started=server_started,
+                )
+            )
+
+        def _send_inbox(self) -> None:
+            # Newest-first, per the spec — the opposite of dlqueue's oldest-
+            # first insertion order, since a note you just jotted down is
+            # what you want to see (and re-check) right away.
+            self._send_html(
+                render.render_template(
+                    "inbox.html.j2",
+                    entries=list(reversed(todo_inbox.open_entries())),
                     server_started=server_started,
                 )
             )
