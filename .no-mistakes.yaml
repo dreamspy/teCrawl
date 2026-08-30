@@ -1,0 +1,4 @@
+# This repo has no CI configured (no GitHub Actions workflows exist).
+# Without this, no-mistakes's CI step waits indefinitely for checks that
+# will never register.
+no_ci: true
