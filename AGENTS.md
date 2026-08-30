@@ -101,6 +101,11 @@ Local personal stores:
 - `dlqueue.py` — append-only "grab this later" queue. Same shape as
   `feedback.py` on purpose; that pairing is the house pattern for any new
   local store.
+- `todo_inbox.py` — append-only self-capture inbox for feature ideas / bugs,
+  same add/resolve-line house pattern, keyed by a server-generated `id`
+  instead of an (artist, title) pair since a free-text note has no natural
+  key. Fed by the `_todo_capture.html.j2` 💡 button included on every page;
+  viewed at `/inbox`. Folding entries into `TODO.md` stays manual.
 
 ### The discovery angles
 
@@ -156,6 +161,7 @@ code and `.env.example` is gitignored personal data.
 | `input/` | personal playlist CSVs | no |
 | `feedback.jsonl` | append-only 👍/👎 log | no |
 | `download_queue.jsonl` | append-only download queue | no |
+| `todo_inbox.jsonl` | append-only 💡 self-capture inbox (feature ideas / bugs) | no |
 | `.spotify_token.json` | user OAuth refresh token, chmod 0600 | no — grants playback control of the account |
 
 The output folder name is the display name with unsafe characters replaced
@@ -196,13 +202,13 @@ UI is built to work without them.
 
 `ThreadingHTTPServer` subclassing `SimpleHTTPRequestHandler` with
 `directory=output/`, so any path that doesn't match an explicit route is served
-as a file from `output/`. Routes are checked in order, which is why `/queue` is
-handled before the `/<folder>/` fallback.
+as a file from `output/`. Routes are checked in order, which is why `/queue`
+and `/inbox` are handled before the `/<folder>/` fallback.
 
-- GET: `/`, `/search`, `/queue`, `/api/discover` (SSE), `/api/pick-folder`,
-  `/api/feedback`, `/api/queue`, `/api/spotify/status`, `/spotify/login`,
-  `/spotify/logout`, `/callback`, `/<folder>/`.
-- POST: `/api/feedback`, `/api/queue`, `/api/more`, `/api/stop`,
+- GET: `/`, `/search`, `/queue`, `/inbox`, `/api/discover` (SSE),
+  `/api/pick-folder`, `/api/feedback`, `/api/queue`, `/api/spotify/status`,
+  `/spotify/login`, `/spotify/logout`, `/callback`, `/<folder>/`.
+- POST: `/api/feedback`, `/api/queue`, `/api/todo`, `/api/more`, `/api/stop`,
   `/api/spotify/{play,pause,next,previous}`.
 
 Gotchas worth knowing before changing anything here:
@@ -254,7 +260,10 @@ players (`recommendations`, `search`, `queue`) inlines `_player.js` the same
 way — pages are entirely self-contained, and the server serves no static
 assets. One macro set (`_cand_row.html.j2`, `_seed_block.html.j2`,
 `_top_picks.html.j2`) is used by all three render paths (whole page, SSE
-fragment, `/api/more` rows) so they cannot drift apart.
+fragment, `/api/more` rows) so they cannot drift apart. `_todo_capture.html.j2`
+(the 💡 quick-capture button + modal) is included on every page — including
+`index`/`folder`, which have no player — so it's deliberately self-contained
+and does not call into `_player.js`.
 
 - **The Jinja environment sets `cache_size=0` on purpose.** With caching on,
   the compiled module of `_seed_block.html.j2` closed over a stale `cand_row`,
