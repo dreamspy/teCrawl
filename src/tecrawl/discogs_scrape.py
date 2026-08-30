@@ -15,6 +15,7 @@ import re
 import time
 
 from . import cache, config
+from .cancel import Cancelled
 
 _LAST_REQUEST = [0.0]
 _MIN_INTERVAL = 4.0  # slow and polite — this is UI scraping, not the REST API
@@ -100,13 +101,22 @@ def _throttle() -> None:
     _LAST_REQUEST[0] = time.time()
 
 
-def recommendations(release_id: int, limit: int = 10) -> list[tuple[str, str, int]]:
+def recommendations(
+    release_id: int, limit: int = 10, cancel=None
+) -> list[tuple[str, str, int]]:
     """(artist, title, release_id) tuples from the seed release's Discogs
     Recommendations carousel. Empty list if the release has none, or if the
     section can't be located (page layout changed). Raises ScrapeUnavailable
     if the page was never reached — Cloudflare blocked us, or Chromium isn't
     installed — so "no recommendations" is never inferred from "couldn't
-    look", and a block is never cached as an empty."""
+    look", and a block is never cached as an empty.
+
+    `cancel` (optional, `threading.Event`): this scrape is the one step in the
+    whole discovery pipeline that can legitimately block for tens of seconds
+    in a single call (waiting out Cloudflare's challenge) — checked inside
+    that wait so a Stop click lands quickly instead of running it to
+    completion first. Raises `Cancelled`, which does *not* count toward the
+    Cloudflare-block streak below (it's not a block, it's a user stop)."""
     url = f"https://www.discogs.com/release/{release_id}"
     params = {"scrape": "recommendations"}
     cached = cache.get(url, params, ttl=_CACHE_TTL)
@@ -117,6 +127,9 @@ def recommendations(release_id: int, limit: int = 10) -> list[tuple[str, str, in
         # empty-TTL; older empties fall through and re-scrape.
         if items or cache.get(url, params, ttl=_EMPTY_CACHE_TTL) is not None:
             return items[:limit]
+
+    if cancel is not None and cancel.is_set():
+        raise Cancelled()
 
     try:
         from playwright.sync_api import sync_playwright
@@ -134,7 +147,9 @@ def recommendations(release_id: int, limit: int = 10) -> list[tuple[str, str, in
 
     _throttle()
     try:
-        items = _scrape(sync_playwright, url)
+        items = _scrape(sync_playwright, url, cancel)
+    except Cancelled:
+        raise
     except ScrapeUnavailable:
         _BLOCKED["streak"] += 1
         if _BLOCKED["streak"] >= _PARK_AFTER_BLOCKS:
@@ -169,13 +184,20 @@ def _user_agent(browser) -> str:
     return ua.replace("HeadlessChrome", "Chrome")
 
 
-def _pass_challenge(page) -> bool:
+def _pass_challenge(page, cancel=None) -> bool:
     """Wait out Cloudflare's interstitial. It self-clears in a few seconds when
     the browser passes and never clears when it doesn't, so polling the title
     is both the fastest exit and the only available "we're blocked" signal —
-    there's no error status to read; the challenge is served as a 200."""
+    there's no error status to read; the challenge is served as a 200.
+
+    This is the single longest uninterruptible wait in the whole discovery
+    pipeline (up to _CHALLENGE_WAIT_S = 30s), so `cancel` is checked on the
+    same 1s cadence as the title poll — a Stop click lands within about a
+    second instead of waiting out the full challenge window."""
     deadline = time.time() + _CHALLENGE_WAIT_S
     while time.time() < deadline:
+        if cancel is not None and cancel.is_set():
+            raise Cancelled()
         try:
             if _CHALLENGE_TITLE not in page.title():
                 return True
@@ -188,7 +210,7 @@ def _pass_challenge(page) -> bool:
         return False
 
 
-def _scrape(sync_playwright, url: str) -> list[list]:
+def _scrape(sync_playwright, url: str, cancel=None) -> list[list]:
     """Load the release page and parse the Recommendations carousel. Returns []
     when the release has no recommendations (nothing renders within the wait),
     and raises ScrapeUnavailable when Cloudflare never let us onto the page —
@@ -209,7 +231,7 @@ def _scrape(sync_playwright, url: str) -> list[list]:
             try:
                 page = context.new_page()
                 page.goto(url, wait_until="commit", timeout=30000)
-                if not _pass_challenge(page):
+                if not _pass_challenge(page, cancel):
                     raise ScrapeUnavailable(
                         "Discogs held the scraper at a Cloudflare challenge — "
                         "Recommendations skipped for this release"

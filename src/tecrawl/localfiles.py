@@ -1,9 +1,10 @@
 """Turn a folder of local audio files into seed Tracks.
 
 Tags first (mutagen reads ID3, MP4, Vorbis/FLAC, ASF, …), filename parsing
-as the fallback for untagged files. No network calls — scanning stays
-instant and offline; Spotify/Discogs matching happens later in the normal
-discovery pipeline.
+as the fallback for untagged files. No API calls — Spotify/Discogs matching
+happens later in the normal discovery pipeline — but not necessarily fast: a
+folder under a cloud-sync mount (Dropbox/iCloud CloudStorage) can add real
+per-file latency reading tags, even for files already "downloaded".
 
 Filename patterns understood (after stripping a leading track number like
 "01 - " / "01. " / vinyl "A1 ", and Bandcamp-style underscores):
@@ -20,6 +21,7 @@ from typing import NamedTuple
 import mutagen
 
 from . import spotify
+from .cancel import Cancelled
 
 AUDIO_EXTS = {
     ".mp3", ".m4a", ".aac", ".flac", ".ogg", ".oga", ".opus",
@@ -131,9 +133,17 @@ def seed_from_file(path: Path) -> tuple[str, str, str] | None:
     return None
 
 
-def scan(folder: Path) -> FolderScan:
+def scan(folder: Path, cancel=None) -> FolderScan:
     """Recursive scan; hidden files/dirs (incl. macOS ._AppleDouble) skipped;
-    duplicate (artist, title) pairs collapse to the first file seen."""
+    duplicate (artist, title) pairs collapse to the first file seen.
+
+    No API calls, but not necessarily instant: a folder under a cloud-sync
+    mount (Dropbox/iCloud CloudStorage) can have real per-file latency even
+    once "downloaded", since reading a file's tags still goes through that
+    provider's virtual filesystem layer. `cancel` (optional, a
+    `threading.Event`) is checked once per file so a Stop click during a big
+    scan doesn't have to wait for every remaining file first — raises
+    `Cancelled`."""
     files = sorted(
         (
             p
@@ -148,6 +158,8 @@ def scan(folder: Path) -> FolderScan:
     skipped: list[tuple[Path, str]] = []
     seen: dict[tuple[str, str], Path] = {}
     for p in files:
+        if cancel is not None and cancel.is_set():
+            raise Cancelled()
         got = seed_from_file(p)
         if not got:
             skipped.append(

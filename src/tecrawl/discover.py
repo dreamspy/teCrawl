@@ -1,12 +1,7 @@
 from typing import NamedTuple
 
 from . import discogs, discogs_scrape, lastfm, spotify, youtube
-
-
-class Cancelled(Exception):
-    """Raised at a say()/progress() checkpoint when the caller's cancel flag
-    is set, so a Stop click unwinds the current seed/candidate loop instead
-    of running it to completion."""
+from .cancel import Cancelled  # re-exported: callers use discover.Cancelled
 
 
 class Candidate(NamedTuple):
@@ -225,7 +220,9 @@ def discover_for_seed(
                 if release.exact
                 else f"recommended with {release.title}"
             )
-            for a, t, rid in discogs_scrape.recommendations(release.release_id, limit=10):
+            for a, t, rid in discogs_scrape.recommendations(
+                release.release_id, limit=10, cancel=cancel
+            ):
                 candidates.append(
                     Candidate(
                         a, t, "discogs_recommendation", rec_detail,
@@ -233,6 +230,8 @@ def discover_for_seed(
                         discogs_release_id=rid,
                     )
                 )
+        except Cancelled:
+            raise
         except discogs_scrape.ScrapeUnavailable as e:
             warn(str(e))
         except Exception as e:

@@ -668,7 +668,16 @@ def serve(port: int = 8765, open_browser: bool = True, bind: str = "0.0.0.0") ->
                 say_json({"type": "status", "message": m})
 
             t0 = time.time()
-            fscan = localfiles.scan(folder)
+            try:
+                fscan = localfiles.scan(folder, cancel=cancel)
+            except discover.Cancelled:
+                say_json({
+                    "type": "stopped",
+                    "elapsed": round(time.time() - t0, 1),
+                    "seeds": 0,
+                    "candidates": 0,
+                })
+                return
             for p, reason in fscan.skipped:
                 say_json({"type": "note",
                           "message": f"skipped {p.name} — {reason}"})
