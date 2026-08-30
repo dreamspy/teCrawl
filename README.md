@@ -14,7 +14,7 @@ The fastest way to use teCrawl. Start the server (`tecrawl serve` or `./open-out
 - a local folder of audio files: `/Users/you/Music/crate` (multi-seed — each track's results stream in as they finish, see below)
 - a single local audio file: `/Users/you/Music/track.mp3` (seeds a normal quick search from its tags)
 
-Progress streams live while Discogs and Last.fm are crawled (typically 30–90 s on a fresh seed, instant when cached), then the results appear inline with the usual inline players. Every search is also archived as a page under **Quick searches** on the index, with a permalink shown when it finishes.
+Progress streams live while Discogs and Last.fm are crawled (typically 30–90 s on a fresh seed, instant when cached), then the results appear inline with the usual inline players. A **■ Stop** button next to the progress line cancels a dig in progress — for a folder run, whatever seeds already finished stay on the page, marked "Stopped early" instead of "Done". Every search is also archived as a page under **Quick searches** on the index, with a permalink shown when it finishes.
 
 Terminal equivalent:
 

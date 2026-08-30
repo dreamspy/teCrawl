@@ -286,8 +286,11 @@ fragment, `/api/more` rows) so they cannot drift apart.
   "this release has no recommendations".
 - **Feedback is record-only.** Nothing in `discover.py` reads `feedback.jsonl`;
   ranking effects are an explicit future decision (see `TODO.md`).
-- There is **no test suite and no linter config** in this repo. Verification is
-  reading the code plus a manual run.
+- There is **no linter config** in this repo. `tests/` holds targeted
+  `unittest` integration tests for specific mechanisms (e.g.
+  `test_stop_button.py` mocks every network call and drives a real
+  `web.serve()` over HTTP/SSE) — there's no full suite or CI, so most
+  verification is still reading the code plus a manual run.
 
 ### Running it locally
 
