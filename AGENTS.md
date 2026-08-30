@@ -214,18 +214,26 @@ Gotchas worth knowing before changing anything here:
   `_CANCEL_EVENT` — no lock needed, since the run's own `finally` releases
   `_RUN_LOCK` as it unwinds, which is what lets a queued second request
   proceed right after a stop. The flag is cleared right after a run acquires
-  `_RUN_LOCK`, and checked inside `discover.py` at the same `say()`/
-  `progress()` checkpoints already used for status messages (between every
-  API hop in `discover_for_seed`, and every candidate in
-  `resolve_to_spotify`/`resolve_to_youtube`) — each raises `discover.Cancelled`
-  once the flag is set, which `quick.run`'s caller and `_run_folder`'s
-  per-seed loop catch to unwind. `_run_folder` keeps seeds already streamed
-  via `seed_html` before the stop (drops the interrupted one) and emits
-  `type: "stopped"` instead of `"done"`, still persisting the partial page to
-  `output/`. Only `search.html.j2` streams live progress (`index.html.j2` /
-  `folder.html.j2` don't), so that's the only template with the Stop button
-  and the `stopped` SSE handler. One `threading.Event` (not per-run) is
-  enough because `_RUN_LOCK` already serializes runs to one at a time.
+  `_RUN_LOCK`. `cancel.Cancelled` (its own module, so `discover.py` and
+  `discogs_scrape.py` can share it without a circular import) is raised at
+  every checkpoint reachable from a running dig: the `say()`/`progress()`
+  wrappers in `discover_for_seed` and `resolve_to_spotify`/
+  `resolve_to_youtube` (between every API hop and candidate), the same
+  wrapper in `seed_input.resolve` (also checked directly between the
+  sequential network calls chained inside its free-text fallback, which have
+  no progress message of their own), the Cloudflare wait inside
+  `discogs_scrape._pass_challenge()` (checked on the same 1s poll already
+  used for the interstitial title, without incrementing the Cloudflare-block
+  streak — a user-initiated stop must never be mistaken for Discogs actually
+  blocking the scraper), and once per file in `localfiles.scan()`. `quick.run`'s
+  caller and `_run_folder`'s per-seed loop catch `Cancelled` to unwind.
+  `_run_folder` keeps seeds already streamed via `seed_html` before the stop
+  (drops the interrupted one) and emits `type: "stopped"` instead of `"done"`,
+  still persisting the partial page to `output/`. Only `search.html.j2`
+  streams live progress (`index.html.j2` / `folder.html.j2` don't), so that's
+  the only template with the Stop button and the `stopped` SSE handler. One
+  `threading.Event` (not per-run) is enough because `_RUN_LOCK` already
+  serializes runs to one at a time.
 - **Default bind is `0.0.0.0`** so a phone on Tailscale/LAN can reach it
   (`--local` restricts it). Combined with `_local_path()`, which accepts a
   pasted absolute path as a dig target, anyone on those networks can point

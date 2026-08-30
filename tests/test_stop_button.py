@@ -38,7 +38,7 @@ config.CACHE_DIR = Path(_tmp.name) / "cache"
 config.DISCOGS_TOKEN = "test-token"
 config.LASTFM_API_KEY = "test-key"
 
-from tecrawl import discogs, discogs_scrape, discover, lastfm, localfiles, spotify, web, youtube  # noqa: E402
+from tecrawl import discogs, discogs_scrape, discover, lastfm, localfiles, quick, spotify, web, youtube  # noqa: E402
 
 
 def fake_release(artist="Seed Artist", title="Seed Track"):
@@ -231,6 +231,95 @@ class DiscoverCheckpointTests(unittest.TestCase):
         with self.assertRaises(discover.Cancelled):
             discover.resolve_to_youtube(candidates, progress=progress, cancel=cancel)
         self.assertLess(self.fakes.calls["search_video_id"], 5)
+
+
+class SeedResolutionCancelTests(unittest.TestCase):
+    """Reproduces the review-round gap in the free-text quick-search path:
+    seed_input._seed_from_text() (no ' - ' in the query) chains up to three
+    sequential network calls — Spotify freetext search, then Last.fm search,
+    then Spotify canonicalize — with no say()/progress() message between the
+    first two. Before this fix, quick.run() never forwarded `cancel` into
+    seed_input.resolve() at all, so a Stop click during seed resolution went
+    unnoticed until it returned and discover_for_seed's own checkpoints took
+    over — up to ~45s of unstoppable network calls on a slow provider."""
+
+    def setUp(self):
+        self.fakes = Fakes().install()
+        self.addCleanup(self.fakes.uninstall)
+        self.calls = {"search_track_freetext": 0, "lastfm_search_track": 0}
+        self._orig_freetext = spotify.search_track_freetext
+        self._orig_lastfm_search = lastfm.search_track
+        self.addCleanup(self._restore)
+
+    def _restore(self):
+        spotify.search_track_freetext = self._orig_freetext
+        lastfm.search_track = self._orig_lastfm_search
+
+    def test_cancel_set_during_freetext_call_stops_before_lastfm_fallback(self):
+        cancel = threading.Event()
+
+        def search_track_freetext(q):
+            self.calls["search_track_freetext"] += 1
+            cancel.set()  # simulate Stop clicked while this call was in flight
+            return None
+
+        def lastfm_search_track(query):
+            self.calls["lastfm_search_track"] += 1
+            return ("Fallback Artist", "Fallback Title")
+
+        spotify.search_track_freetext = search_track_freetext
+        lastfm.search_track = lastfm_search_track
+
+        with self.assertRaises(discover.Cancelled):
+            quick.run("no dash free text query", cancel=cancel)
+
+        self.assertEqual(self.calls["search_track_freetext"], 1)
+        # The checkpoint before the Last.fm fallback must catch the flag —
+        # not run the fallback call to completion first.
+        self.assertEqual(self.calls["lastfm_search_track"], 0)
+        # Cancellation was caught during seed resolution, before discovery
+        # (discogs.search_release, the first call in discover_for_seed) ever
+        # started.
+        self.assertEqual(self.fakes.calls["search_release"], 0)
+
+    def test_already_cancelled_stops_with_zero_network_calls(self):
+        cancel = threading.Event()
+        cancel.set()
+
+        def search_track_freetext(q):
+            self.calls["search_track_freetext"] += 1
+            return None
+
+        spotify.search_track_freetext = search_track_freetext
+
+        with self.assertRaises(discover.Cancelled):
+            quick.run("no dash free text query", cancel=cancel)
+
+        self.assertEqual(self.calls["search_track_freetext"], 0)
+        self.assertEqual(self.calls["lastfm_search_track"], 0)
+        self.assertEqual(self.fakes.calls["search_release"], 0)
+
+    def test_uncancelled_freetext_lookup_still_resolves_normally(self):
+        """Regression guard: with cancel never set, the free-text fallback
+        chain still runs end-to-end and discovery still proceeds."""
+        def search_track_freetext(q):
+            self.calls["search_track_freetext"] += 1
+            return None
+
+        def lastfm_search_track(query):
+            self.calls["lastfm_search_track"] += 1
+            return ("Fallback Artist", "Fallback Title")
+
+        spotify.search_track_freetext = search_track_freetext
+        lastfm.search_track = lastfm_search_track
+
+        result = quick.run(
+            "no dash free text query", cancel=threading.Event(), persist=False
+        )
+        self.assertEqual(self.calls["search_track_freetext"], 1)
+        self.assertEqual(self.calls["lastfm_search_track"], 1)
+        self.assertEqual(result.track.artist, "Fallback Artist")
+        self.assertEqual(self.fakes.calls["search_release"], 1)
 
 
 HOST = "127.0.0.1"
