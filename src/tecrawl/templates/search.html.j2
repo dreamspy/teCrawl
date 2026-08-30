@@ -17,6 +17,7 @@
   flex-wrap: wrap;
 }
 .status.error { color: #ff7c7c; }
+.status.stopped { color: #e0a640; }
 .spinner {
   width: 14px; height: 14px;
   border: 2px solid var(--border);
@@ -26,6 +27,17 @@
   flex: none;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+.stopbtn {
+  background: var(--card);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: .15rem .6rem;
+  font-size: .78rem;
+  cursor: pointer;
+}
+.stopbtn:hover:not(:disabled) { border-color: #ff7c7c; color: #ff7c7c; }
+.stopbtn:disabled { opacity: .5; cursor: default; }
 .elapsed { color: #555; }
 .permalink { margin-left: auto; }
 .seedline { color: var(--text); font-size: .95rem; margin: 0 0 .75rem; }
@@ -80,6 +92,7 @@
   <span class="spinner" id="spin" hidden></span>
   <span id="msg"></span>
   <span class="elapsed" id="elapsed"></span>
+  <button class="stopbtn" id="stopbtn" type="button" hidden>■ Stop</button>
   <a class="permalink" id="permalink" hidden target="_blank" rel="noopener">permalink</a>
 </div>
 <div class="queuebar" id="queuebar" hidden>
@@ -104,6 +117,7 @@
   const spin = document.getElementById('spin');
   const msg = document.getElementById('msg');
   const elapsedEl = document.getElementById('elapsed');
+  const stopBtn = document.getElementById('stopbtn');
   const permalink = document.getElementById('permalink');
   const seedline = document.getElementById('seedline');
   const notes = document.getElementById('notes');
@@ -111,13 +125,16 @@
   const results = document.getElementById('results');
   let es = null, timer = null, t0 = 0;
 
-  function stop(finalMsg, isError) {
+  function stop(finalMsg, isError, isStopped) {
     if (es) { es.close(); es = null; }
     if (timer) { clearInterval(timer); timer = null; }
     spin.hidden = true;
     go.disabled = false;
+    stopBtn.hidden = true;
+    stopBtn.disabled = false;
     msg.textContent = finalMsg;
     statusEl.classList.toggle('error', !!isError);
+    statusEl.classList.toggle('stopped', !!isStopped);
   }
 
   function start(q) {
@@ -135,8 +152,11 @@
     permalink.hidden = true;
     statusEl.hidden = false;
     statusEl.classList.remove('error');
+    statusEl.classList.remove('stopped');
     spin.hidden = false;
     go.disabled = true;
+    stopBtn.hidden = false;
+    stopBtn.disabled = false;
     msg.textContent = 'Starting…';
     elapsedEl.textContent = '';
     t0 = Date.now();
@@ -188,6 +208,24 @@
         if (d.permalink) { permalink.href = d.permalink; permalink.hidden = false; }
         stop('Done in ' + d.elapsed + 's · ' + d.seeds + ' seeds · '
              + d.candidates + ' candidates', false);
+      } else if (d.type === 'stopped') {
+        if (d.tops_html) {
+          results.insertAdjacentHTML('afterbegin', d.tops_html);
+          applyRowStates(results);
+        }
+        if (d.permalink) {
+          permalink.href = d.permalink;
+          permalink.hidden = false;
+          queuebar.hidden = false;
+        }
+        seedline.hidden = true;
+        let text = 'Stopped early';
+        if (d.seeds != null) {
+          text += ' · ' + d.seeds + ' seed' + (d.seeds === 1 ? '' : 's') + ' completed';
+        }
+        if (d.candidates != null) text += ' · ' + d.candidates + ' candidates';
+        if (d.elapsed != null) text += ' (' + d.elapsed + 's)';
+        stop(text, false, true);
       } else if (d.type === 'error') {
         stop(d.message, true);
       }
@@ -200,6 +238,12 @@
   form.addEventListener('submit', function (ev) {
     ev.preventDefault();
     start(input.value.trim());
+  });
+
+  stopBtn.addEventListener('click', function () {
+    stopBtn.disabled = true;
+    msg.textContent = 'Stopping…';
+    fetch('/api/stop', { method: 'POST' }).catch(function () {});
   });
 
   const browse = document.getElementById('browse');

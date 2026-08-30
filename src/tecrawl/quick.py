@@ -28,10 +28,15 @@ def run(
     progress: Callable[[str], None] | None = None,
     on_seed: Callable[[spotify.Track, str], None] | None = None,
     persist: bool = True,
+    cancel=None,
 ) -> QuickResult:
     """Resolve the input, run the full discovery pipeline on it, and (by
     default) persist a standalone HTML page next to the playlist runs.
-    Raises InputError with a user-facing message for un-parseable input."""
+    Raises InputError with a user-facing message for un-parseable input.
+
+    `cancel` (optional, `threading.Event`): forwarded to the discovery calls,
+    which raise `discover.Cancelled` at their progress checkpoints once it's
+    set — the caller is expected to catch that."""
     say = progress or (lambda m: None)
 
     track, note = seed_input.resolve(query, progress=say)
@@ -39,10 +44,12 @@ def run(
         on_seed(track, note)
     say(f"Seed: {track.artist} — {track.title} ({note})")
 
-    release, candidates = discover.discover_for_seed(track, progress=say)
+    release, candidates = discover.discover_for_seed(
+        track, progress=say, cancel=cancel
+    )
     say(f"{len(candidates)} candidates · matching on Spotify…")
-    candidates = discover.resolve_to_spotify(candidates, progress=say)
-    candidates = discover.resolve_to_youtube(candidates, progress=say)
+    candidates = discover.resolve_to_spotify(candidates, progress=say, cancel=cancel)
+    candidates = discover.resolve_to_youtube(candidates, progress=say, cancel=cancel)
 
     out_path = None
     if persist:
