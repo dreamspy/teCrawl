@@ -104,7 +104,7 @@ tecrawl input/My-Techno-Picks.csv
 tecrawl input/My-Techno-Picks.csv --max-seeds 3
 ```
 
-The tool prints progress per seed (`[12/25] Artist — Title → 20 candidates, 7 on Spotify, 18 on YouTube`) and writes the result to `output/<timestamp>.html`.
+The tool prints progress per seed (`[12/25] Artist — Title → 20 candidates, 7 on Spotify, 18 on YouTube`) and writes the result to `output/<playlist name>/<timestamp>.html`.
 
 ### Alternative: run on a folder of audio files
 
@@ -160,7 +160,7 @@ Each row has:
 - **copy** — puts `Artist - Title` on your clipboard, for pasting into a store, a tracker, or a search
 - **⬇ queue** — add to the download queue (see below); click again to remove
 
-The **★ Top picks** section at the top shows candidates that surfaced from 3+ of your seed tracks — strong cross-signal.
+The **★ Top picks** section at the top shows candidates that surfaced from 3+ of your seed tracks — strong cross-signal. (Runs with fewer than 3 seeds drop the bar to 2, so tiny runs can still produce picks.)
 
 ### ▶ Play all + media keys
 
