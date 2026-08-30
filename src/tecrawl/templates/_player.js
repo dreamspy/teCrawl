@@ -81,8 +81,15 @@ const YT_ERRORS = {
 // with the page in the background.
 
 function silentWavUrl() {
-  // 0.1 s of 8 kHz 16-bit mono silence, built at runtime.
-  const n = 800, size = 44 + n * 2;
+  // 6 s of 8 kHz 16-bit mono silence, built at runtime. The length is the
+  // whole point: WebKit refuses to let an audio element hold the OS media
+  // session unless it is longer than 0.95 s (isElementLongEnoughForMainContent
+  // in MediaElementSession.cpp), and Chromium wants > 5 s before it grants full
+  // audio focus rather than ducking focus (media_content_type.cc). The old
+  // 0.1 s clip failed both, so it could only hold the keys while the YouTube
+  // video also qualified — and the video stops qualifying the moment the window
+  // loses focus, which is when the keys used to die.
+  const n = 48000, size = 44 + n * 2;
   const buf = new ArrayBuffer(size), v = new DataView(buf);
   const w = function (o, s) {
     for (let i = 0; i < s.length; i++) v.setUint8(o + i, s.charCodeAt(i));
@@ -110,6 +117,30 @@ function startSilentKeeper() {
 
 function stopSilentKeeper() {
   if (silentKeeper) silentKeeper.pause();
+}
+
+// Safari gives the media keys to whichever element STARTED playing most
+// recently: PlatformMediaSessionManager::setCurrentSession does a
+// prependOrMoveToFirst, and remote commands go to the first eligible session in
+// that list. Every queue advance starts a fresh YouTube video, which jumps the
+// iframe to the front and swallows next/previous until the keeper's loop next
+// wraps — that is the "skip does nothing for the first few seconds" symptom.
+// Restarting the keeper once the video is actually playing puts this page back
+// at the front. A bare play() on an already-playing element is not a new start
+// and would not reorder anything, hence the bounce.
+//
+// Only ever called while the video is playing, so the keeper always ends up
+// playing too — never bail out early on silentKeeper.paused. A pause/play
+// toggle leaves the keeper stopped for a moment, and bailing there stranded the
+// keys on the iframe for the rest of the track: play/pause kept working (the
+// iframe handles those itself) while next/previous went dead.
+function claimMediaKeys() {
+  if (!silentKeeper) return;
+  try { if (!silentKeeper.paused) silentKeeper.pause(); } catch (e) {}
+  silentKeeper.play().catch(function (err) {
+    // Worth knowing about: if this rejects, the page cannot hold the keys.
+    console.warn('teCrawl: silent keeper could not start —', err && err.name);
+  });
 }
 
 function queueItems() {
@@ -152,9 +183,15 @@ function playCurrent() {
 }
 
 function pauseCurrent() {
-  // The silent keeper deliberately keeps running: it's what holds the OS
-  // media session, so pausing it would hand the keys back to the iframe.
+  // The keeper has to mirror the video's state. Safari reads the direction of
+  // the play/pause key off the element that owns the session — the keeper, not
+  // the video (MediaElementSession.cpp: TogglePlayPauseCommand asks
+  // element->paused()). Leaving the keeper running through a pause pinned that
+  // flag to false, so the key could only ever mean "pause" and the track would
+  // never restart. A paused element keeps its session, so pausing it does not
+  // hand the keys back to the iframe.
   if (activeYt) { try { activeYt.pauseVideo(); } catch (e) {} }
+  if (silentKeeper) silentKeeper.pause();
   if ('mediaSession' in navigator) {
     try { navigator.mediaSession.playbackState = 'paused'; } catch (e) {}
   }
@@ -191,6 +228,10 @@ function queuePlay(i) {
     try { it.row.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (e) {}
   }
   closeAllEmbeds();
+  // Skipping means playing, so revive the keeper if a pause left it stopped —
+  // otherwise claimMediaKeys() below has nothing to re-assert with and the new
+  // video keeps the keys.
+  startSilentKeeper();
   togglePlayYT(it.btn, true);
   if ('mediaSession' in navigator) {
     try {
@@ -415,10 +456,34 @@ function toggleQueue(fromEl) {
   queuePlay(startIdx);
 }
 
+// A manual ▶ on a track row joins the play-all queue at that row rather than
+// killing the queue. Without this a single-track play has no queue behind it,
+// so next/previous have nothing to skip to and the media keys look broken —
+// which is exactly how it read. Rows the queue doesn't cover (the seed header,
+// the per-seed dropdown) fall through to a plain one-off play.
+function playRowAsQueue(btn) {
+  const items = QUEUE ? QUEUE.items : queueItems();
+  let at = -1;
+  for (let i = 0; i < items.length; i++) {
+    if (items[i].btn === btn) { at = i; break; }
+  }
+  if (at === -1) return false;
+  if (!QUEUE) {
+    QUEUE = { items: items, idx: -1, originEl: null };
+    startSilentKeeper();
+    setupMediaSession();
+    document.querySelectorAll('.playall').forEach(function (b) { b.textContent = '⏹ Stop queue'; });
+    document.querySelectorAll('.playall-mini').forEach(function (b) { b.textContent = '⏹'; });
+  }
+  queuePlay(at);
+  return true;
+}
+
 function togglePlayYT(btn, fromQueue) {
-  if (!fromQueue && QUEUE) queueStop(); // manual click takes over from the queue
   const host = btn.closest('.cand, .seed-head, .pick, .seed-row');
   const existing = host.querySelector('.embed');
+  if (!fromQueue && !existing && playRowAsQueue(btn)) return;
+  if (!fromQueue && QUEUE) queueStop(); // manual click takes over from the queue
   if (existing) {
     closeAllEmbeds();
     return;
@@ -460,6 +525,10 @@ function togglePlayYT(btn, fromQueue) {
         },
         onStateChange: function (e) {
           updateTransport();
+          // 1 = playing. The video has just taken the front of Safari's session
+          // list, so take it back or next/previous stay dead. Twice, because the
+          // iframe's own claim can land a beat after ours on a resume.
+          if (e.data === 1) { claimMediaKeys(); setTimeout(claimMediaKeys, 600); }
           if (QUEUE && e.data === 0) queuePlay(QUEUE.idx + 1); // 0 = ended
         },
         onError: function (e) {
