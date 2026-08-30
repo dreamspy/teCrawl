@@ -15,6 +15,7 @@ import re
 from typing import Callable, NamedTuple
 
 from . import lastfm, spotify, youtube
+from .cancel import Cancelled  # re-exported: callers use seed_input.Cancelled
 
 
 class InputError(ValueError):
@@ -58,9 +59,21 @@ def _clean_video_title(title: str) -> str:
     return t.strip(" -–—|· ").strip()
 
 
-def _canonicalize(artist: str, title: str) -> tuple[spotify.Track, bool]:
+def _check_cancel(cancel) -> None:
+    """Raise Cancelled if the run's cooperative cancel flag is set. Unlike
+    discover.py, the helpers below chain multiple sequential network calls
+    with no say()/progress() message between them, so each call site checks
+    directly rather than relying on a progress-checkpoint wrapper."""
+    if cancel is not None and cancel.is_set():
+        raise Cancelled()
+
+
+def _canonicalize(
+    artist: str, title: str, cancel=None
+) -> tuple[spotify.Track, bool]:
     """Try to swap a parsed (artist, title) for Spotify's canonical spelling,
     which also gains a playable spotify_id. Falls back to the parsed values."""
+    _check_cancel(cancel)
     try:
         hit = spotify.search_track(artist, title)
     except Exception:
@@ -101,7 +114,8 @@ def _seed_from_spotify(kind: str, spotify_id: str) -> ResolvedSeed:
     return ResolvedSeed(track, note)
 
 
-def _seed_from_youtube(video_id: str) -> ResolvedSeed:
+def _seed_from_youtube(video_id: str, cancel=None) -> ResolvedSeed:
+    _check_cancel(cancel)
     info = youtube.video_info(video_id)
     if not info:
         raise InputError(
@@ -137,17 +151,17 @@ def _seed_from_youtube(video_id: str) -> ResolvedSeed:
             "Couldn't parse an artist and title from that YouTube video. "
             "Try typing it as 'Artist - Title'."
         )
-    track, verified = _canonicalize(artist, title)
+    track, verified = _canonicalize(artist, title, cancel=cancel)
     track = track._replace(youtube_id=video_id)
     note = f"from YouTube ({how})" + (" · verified on Spotify" if verified else "")
     return ResolvedSeed(track, note)
 
 
-def _seed_from_text(q: str) -> ResolvedSeed:
+def _seed_from_text(q: str, cancel=None) -> ResolvedSeed:
     parts = _DASH_SPLIT_RE.split(q, maxsplit=1)
     if len(parts) == 2 and parts[0].strip() and parts[1].strip():
         artist, title = parts[0].strip(), parts[1].strip()
-        track, verified = _canonicalize(artist, title)
+        track, verified = _canonicalize(artist, title, cancel=cancel)
         note = (
             "matched on Spotify"
             if verified
@@ -156,12 +170,14 @@ def _seed_from_text(q: str) -> ResolvedSeed:
         return ResolvedSeed(track, note)
 
     # No dash: free search. Spotify first, Last.fm as the keyless fallback.
+    _check_cancel(cancel)
     try:
         hit = spotify.search_track_freetext(q)
     except Exception:
         hit = None
     if hit:
         return ResolvedSeed(hit, "best Spotify match")
+    _check_cancel(cancel)
     found = None
     try:
         found = lastfm.search_track(q)
@@ -169,7 +185,7 @@ def _seed_from_text(q: str) -> ResolvedSeed:
         found = None
     if found:
         artist, title = found
-        track, _ = _canonicalize(artist, title)
+        track, _ = _canonicalize(artist, title, cancel=cancel)
         return ResolvedSeed(track, "best Last.fm match")
     raise InputError(
         "Couldn't find that track. Try the format 'Artist - Title', or paste "
@@ -177,10 +193,24 @@ def _seed_from_text(q: str) -> ResolvedSeed:
     )
 
 
-def resolve(query: str, progress: Callable[[str], None] | None = None) -> ResolvedSeed:
+def resolve(
+    query: str,
+    progress: Callable[[str], None] | None = None,
+    cancel=None,
+) -> ResolvedSeed:
     """Main entry: query string in, ResolvedSeed out. Raises InputError with
-    a user-facing message when the input can't be understood."""
-    say = progress or (lambda m: None)
+    a user-facing message when the input can't be understood.
+
+    `cancel` (optional): see `discover.discover_for_seed` — an object with
+    `.is_set()`, checked before each network hop (including the ones chained
+    inside the free-text fallback, which has no progress message between
+    them) and raising `Cancelled` to unwind early."""
+    _progress = progress or (lambda m: None)
+
+    def say(m: str) -> None:
+        _check_cancel(cancel)
+        _progress(m)
+
     q = query.strip()
     if not q:
         raise InputError("Type a track name or paste a Spotify/YouTube link.")
@@ -195,7 +225,7 @@ def resolve(query: str, progress: Callable[[str], None] | None = None) -> Resolv
         seed = _seed_from_spotify(m.group(1).lower(), m.group(2))
     elif yt:
         say("Reading the YouTube video info…")
-        seed = _seed_from_youtube(yt.group(1))
+        seed = _seed_from_youtube(yt.group(1), cancel=cancel)
     elif "://" in q or q.lower().startswith("www."):
         raise InputError(
             "Only Spotify and YouTube links are supported — or type the track "
@@ -203,7 +233,7 @@ def resolve(query: str, progress: Callable[[str], None] | None = None) -> Resolv
         )
     else:
         say("Looking up the track…")
-        seed = _seed_from_text(q)
+        seed = _seed_from_text(q, cancel=cancel)
 
     if not seed.track.youtube_id:
         # Give the seed a playable YouTube button even when Spotify can't

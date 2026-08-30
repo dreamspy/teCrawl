@@ -39,7 +39,7 @@ def run(
     set — the caller is expected to catch that."""
     say = progress or (lambda m: None)
 
-    track, note = seed_input.resolve(query, progress=say)
+    track, note = seed_input.resolve(query, progress=say, cancel=cancel)
     if on_seed:
         on_seed(track, note)
     say(f"Seed: {track.artist} — {track.title} ({note})")
