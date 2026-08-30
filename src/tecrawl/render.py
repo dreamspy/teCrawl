@@ -35,7 +35,7 @@ def _group_by_source(
 
 _env = Environment(
     loader=FileSystemLoader(Path(__file__).parent / "templates"),
-    autoescape=select_autoescape(["html"]),
+    autoescape=select_autoescape(["html", "html.j2"]),
     # No template cache, deliberately. Jinja caches a compiled *module* on each
     # Template object, and `{% from "_seed_block.html.j2" import seed_block %}`
     # hands back that cached module. Since _seed_block.html.j2 itself rarely
