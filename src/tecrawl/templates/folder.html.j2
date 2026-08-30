@@ -32,7 +32,7 @@ a.row:hover { color: var(--accent); text-decoration: none; }
 </head>
 <body>
 <div class="wrap">
-<div class="meta"><a href="/">← All playlists</a> · <a href="/queue">⬇ Download queue</a></div>
+<div class="meta"><a href="/">← All playlists</a> · <a href="/queue">⬇ Download queue</a> · <a href="/inbox">💡 Inbox</a></div>
 <h1>{{ folder }}</h1>
 <div class="meta">{{ runs | length }} run{{ '' if runs | length == 1 else 's' }} · newest first</div>
 {% for r in runs %}
@@ -40,5 +40,6 @@ a.row:hover { color: var(--accent); text-decoration: none; }
 {% endfor %}
 <div class="footer">server started {{ server_started }} · after updating teCrawl, restart <code>tecrawl serve</code> to pick up new features</div>
 </div>
+{% include "_todo_capture.html.j2" %}
 </body>
 </html>

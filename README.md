@@ -135,6 +135,7 @@ Routing:
 - `/` — index page: quick-search box plus every playlist you've run.
 - `/search` — interactive quick search (single track/link in, recommendations out).
 - `/queue` — your ⬇ download queue: everything you've marked "grab this later".
+- `/inbox` — your 💡 quick-capture inbox: feature ideas or bugs jotted down mid-browsing.
 - `/<playlist-slug>/` — opens the most recent run for that playlist. Refresh after each new `tecrawl` call to see the updated page.
 - `/<playlist-slug>/<timestamp>.html` — a specific historical run.
 
@@ -179,6 +180,12 @@ Hitting **⬇ queue** on any row (candidate, ★ top pick, or the seed header) m
 Everything queued is listed at **`/queue`**, linked from the top of every page and with a count on the index. That page shows each track with the seed you were digging when you queued it, the usual YT / Last.fm / Discogs / Dig links, a working YouTube player and ▶ Play all, a **×** to remove an entry by hand, and a **copy** button on each row for that one `Artist - Title`, and a **Copy list** button that puts every queued track on your clipboard one per line — paste either into a store search, a tracker, or wherever you actually acquire music.
 
 Storage is `download_queue.jsonl` at the repo root (gitignored, same as `feedback.jsonl`): append-only, so the full history of what you queued and un-queued is preserved even though `/queue` only shows what's currently waiting. **Not a Spotify playlist** — that would need OAuth this project doesn't have and would only ever hold candidates that resolved to Spotify, missing every YouTube-only find. Requires viewing through `tecrawl serve` (the button talks to the local server).
+
+### 💡 Quick-capture inbox
+
+Every page has a floating **💡** button (and an "Inbox" link in the nav) for jotting down a feature idea or bug the moment you notice it, without breaking your flow. It pops a small text box; **Save** appends the note to `todo_inbox.jsonl` at the repo root (gitignored, same append-only pattern as `feedback.jsonl`/`download_queue.jsonl`) along with the page you were on.
+
+Open notes are listed newest-first at **`/inbox`**, with a manual **×** to mark one resolved once you've dealt with it or folded it into `TODO.md` — that folding step is still a manual, periodic chore, not automatic. Requires viewing through `tecrawl serve` (the button talks to the local server).
 
 ### Re-running
 

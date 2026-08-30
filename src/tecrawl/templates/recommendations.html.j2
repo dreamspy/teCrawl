@@ -9,7 +9,7 @@
 </head>
 <body>
 <div class="wrap">
-<div class="meta"><a href="/">← All playlists</a> · <a href="/queue">⬇ Download queue</a></div>
+<div class="meta"><a href="/">← All playlists</a> · <a href="/queue">⬇ Download queue</a> · <a href="/inbox">💡 Inbox</a></div>
 <h1>teCrawl{% if playlist_name %} — {{ playlist_name }}{% endif %}</h1>
 <div class="meta">Generated {{ generated_at }} · {{ seeds|length }} seed track{% if seeds|length != 1 %}s{% endif %}</div>
 <div class="queuebar">
@@ -24,6 +24,7 @@
 {{ seed_block(seed, release, groups) }}
 {% endfor %}
 </div>
+{% include "_todo_capture.html.j2" %}
 <script src="https://open.spotify.com/embed/iframe-api/v1" async></script>
 <script src="https://www.youtube.com/iframe_api" async></script>
 <script>

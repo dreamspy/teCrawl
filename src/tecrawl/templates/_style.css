@@ -638,3 +638,78 @@ body.with-transport { padding-bottom: 5.5rem; }
   .tp-pos { display: none; }
   .tp-btn { min-width: 30px; }
 }
+
+/* --- Quick-capture 💡 button (_todo_capture.html.j2) ---
+   Fixed top-right on every page, deliberately, so it never collides with the
+   bottom-fixed .transport bar injected by _player.js. */
+#todo-fab {
+  position: fixed;
+  top: 1rem;
+  right: 1rem;
+  z-index: 60;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--card);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-size: 1rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+#todo-fab:hover { border-color: var(--accent); }
+.todo-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  background: rgba(0, 0, 0, .6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+.todo-modal[hidden] { display: none; }
+.todo-box {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1rem;
+  width: 100%;
+  max-width: 420px;
+}
+.todo-box-title { font-weight: 600; margin-bottom: .5rem; }
+.todo-box textarea {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 6px;
+  padding: .6rem;
+  font-family: inherit;
+  font-size: .9rem;
+  resize: vertical;
+}
+.todo-box textarea:focus { outline: none; border-color: var(--accent); }
+.todo-box-acts {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  margin-top: .6rem;
+  justify-content: flex-end;
+}
+.todo-status { color: var(--muted); font-size: .78rem; margin-right: auto; }
+.todo-box-acts button {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  border-radius: 5px;
+  padding: .4rem .8rem;
+  font-size: .82rem;
+  cursor: pointer;
+  font-family: inherit;
+}
+.todo-box-acts button:hover { border-color: #555; color: var(--text); }
+.todo-box-acts button.save { border-color: var(--accent); color: var(--accent); }
+.todo-box-acts button.save:hover { background: var(--accent); color: #000; }

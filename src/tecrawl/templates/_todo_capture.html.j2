@@ -1,0 +1,70 @@
+{# Floating 💡 capture button + modal, included on every page so a feature
+   idea or bug noticed mid-browsing can be jotted down without breaking flow.
+   Appends to todo_inbox.jsonl via /api/todo; see /inbox to review and resolve.
+   Deliberately self-contained (no dependency on _player.js) since index.html
+   and folder.html don't include a player. #}
+<button id="todo-fab" type="button" title="Note a feature idea or bug (saved to todo_inbox.jsonl)">💡</button>
+<div id="todo-modal" class="todo-modal" hidden>
+  <div class="todo-box">
+    <div class="todo-box-title">Quick note</div>
+    <textarea id="todo-text" placeholder="Feature idea, bug, anything…" rows="4"></textarea>
+    <div class="todo-box-acts">
+      <span id="todo-status" class="todo-status"></span>
+      <button id="todo-cancel" type="button">Cancel</button>
+      <button id="todo-save" type="button" class="save">Save</button>
+    </div>
+  </div>
+</div>
+<script>
+(function () {
+  const fab = document.getElementById('todo-fab');
+  const modal = document.getElementById('todo-modal');
+  const text = document.getElementById('todo-text');
+  const status = document.getElementById('todo-status');
+  const cancel = document.getElementById('todo-cancel');
+  const save = document.getElementById('todo-save');
+  if (!fab) return;
+
+  function open() {
+    modal.hidden = false;
+    status.textContent = '';
+    text.value = '';
+    text.focus();
+  }
+  function close() { modal.hidden = true; }
+
+  fab.addEventListener('click', open);
+  cancel.addEventListener('click', close);
+  modal.addEventListener('click', function (e) { if (e.target === modal) close(); });
+  document.addEventListener('keydown', function (e) {
+    if (!modal.hidden && e.key === 'Escape') close();
+  });
+
+  function submit() {
+    const t = text.value.trim();
+    if (!t) { text.focus(); return; }
+    save.disabled = true;
+    status.textContent = 'Saving…';
+    fetch('/api/todo', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'add', text: t, page: location.pathname }),
+    }).then(function (r) {
+      if (!r.ok) throw new Error('bad status');
+      return r.json();
+    }).then(function (d) {
+      if (d.error) throw new Error(d.error);
+      status.textContent = '✓ Saved to inbox';
+      setTimeout(close, 700);
+    }).catch(function () {
+      status.textContent = 'Failed — is the tecrawl server running?';
+    }).finally(function () {
+      save.disabled = false;
+    });
+  }
+  save.addEventListener('click', submit);
+  text.addEventListener('keydown', function (e) {
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') submit();
+  });
+})();
+</script>

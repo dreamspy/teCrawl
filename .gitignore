@@ -28,6 +28,9 @@ feedback.jsonl
 # Personal "grab this later" download queue (stays local)
 download_queue.jsonl
 
+# Personal self-capture inbox (feature ideas / bugs, stays local)
+todo_inbox.jsonl
+
 # Build artifacts
 build/
 dist/
