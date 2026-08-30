@@ -88,6 +88,7 @@
 
 ## Later — Save-to-Spotify-playlist
 
+See docs/spotify-playlist-research.md for feasibility research.
 - [ ] Checkbox in the HTML next to each candidate
 - [ ] "Save selected to a new Spotify playlist" button
 - [ ] Re-introduces user OAuth + `playlist-modify-private` scope
