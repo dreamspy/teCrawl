@@ -93,7 +93,7 @@ class Fakes:
             self._sleep()
             return []
 
-        def scrape_recommendations(release_id, limit=10):
+        def scrape_recommendations(release_id, limit=10, cancel=None):
             self.calls["scrape_recommendations"] += 1
             self._sleep()
             return []
@@ -387,7 +387,7 @@ class WebServerStopTests(unittest.TestCase):
         ]
         scan_result = localfiles.FolderScan(name="Stop Folder Test", tracks=seeds, skipped=[])
         orig_scan = localfiles.scan
-        localfiles.scan = lambda folder: scan_result
+        localfiles.scan = lambda folder, cancel=None: scan_result
         self.addCleanup(lambda: setattr(localfiles, "scan", orig_scan))
 
         with TemporaryDirectory() as d:
@@ -436,7 +436,7 @@ class WebServerStopTests(unittest.TestCase):
         ]
         scan_result = localfiles.FolderScan(name="Normal Folder Test", tracks=seeds, skipped=[])
         orig_scan = localfiles.scan
-        localfiles.scan = lambda folder: scan_result
+        localfiles.scan = lambda folder, cancel=None: scan_result
         self.addCleanup(lambda: setattr(localfiles, "scan", orig_scan))
 
         with TemporaryDirectory() as d:
