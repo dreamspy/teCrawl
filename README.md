@@ -36,6 +36,8 @@ Input-handling notes:
 
 That's it — the script activates the venv, starts the local server if it isn't already running, and opens http://localhost:8765/ in your browser. If the server is already up, it just reopens the URL (no double-start).
 
+Prefer Finder? Double-click `Start teCrawl.command` in the repo root: it runs `open-output.sh` in a Terminal window (close that window or press Ctrl-C to stop the server).
+
 From there, `/` lists every playlist you've run (plus the quick-search box) and `/<playlist-name>/` always serves the most recent output for that playlist — bookmark whichever URL you use most. Leave the server running; after each new `tecrawl` run, just refresh.
 
 **Phone access:** the server binds to all interfaces, so the URL is also reachable over [Tailscale or LAN](#viewing-from-your-phone). Always view via the server — YouTube embeds refuse `file://` origins and won't play.
